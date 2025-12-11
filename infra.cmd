@@ -46,13 +46,16 @@ if errorlevel 1 (
 if exist "%BASE%\kustomization.yaml" (
   echo Executando kubectl %OP% -k "%BASE%"
   kubectl %OP% -k "%BASE%"
-  exit /b %errorlevel%
+  if errorlevel 1 exit /b !errorlevel!
 )
 
 for /r "%BASE%" %%F in (kustomization.yaml) do (
-  echo Executando kubectl %OP% -k "%%~dpF"
-  kubectl %OP% -k "%%~dpF"
-  if errorlevel 1 exit /b !errorlevel!
+  set current=%%~dpF
+  if /i not "!current!"=="%BASE%\\" (
+    echo Executando kubectl %OP% -k "%%~dpF"
+    kubectl %OP% -k "%%~dpF"
+    if errorlevel 1 exit /b !errorlevel!
+  )
 )
 
 for /r "%BASE%" %%F in (*.yaml) do (

@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors/IDE
+.vscode/
+.idea/
+*.iml
+.trae/
+
+# Node/JS (se houver)
+node_modules/
+dist/
+build/
+
+# .NET
+bin/
+obj/
+.vs/
+TestResults/
+*.user
+*.suo
+*.cache
+*.pdb
+*.mdb
+*.nupkg
+*.snupkg
+
+# Logs e temporários
+logs/
+*.log
+temp/
+tmp/
+
+# Env/Segredos
+.env
+*.env
+

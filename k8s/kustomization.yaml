@@ -11,7 +11,4 @@ resources:
   - redis/service.yaml
   - redis/statefulset.yaml
   - redis/networkpolicy.yaml
-  - auth/configmap.yaml
-  - auth/secret.yaml
-  - auth/deployment.yaml
-  - auth/service.yaml
+  - ../Auth/k8s
