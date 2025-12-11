@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: creature-realms
+  labels:
+    app.kubernetes.io/name: auth
+    app.kubernetes.io/part-of: creature-realms
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: auth
+        app.kubernetes.io/part-of: creature-realms
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: auth
+          image: creature-realms/auth:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: JWT__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: JWT__Issuer
+            - name: JWT__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: JWT__Audience
+            - name: JWT__Key
+              valueFrom:
+                secretKeyRef:
+                  name: auth-secret
+                  key: JWT__Key
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: auth-secret
+                  key: ConnectionStrings__Default
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

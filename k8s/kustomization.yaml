@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - postgres/configmap.yaml
+  - postgres/secret.yaml
+  - postgres/service.yaml
+  - postgres/statefulset.yaml
+  - postgres/networkpolicy.yaml
+  - redis/configmap.yaml
+  - redis/service.yaml
+  - redis/statefulset.yaml
+  - redis/networkpolicy.yaml
+  - auth/configmap.yaml
+  - auth/secret.yaml
+  - auth/deployment.yaml
+  - auth/service.yaml

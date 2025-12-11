@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: creature-realms
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: creature-realms
+    app.kubernetes.io/component: cache
+data:
+  redis.conf: |
+    appendonly yes
+    save 900 1
+    save 300 10
+    save 60 10000
+    protected-mode yes
+    port 6379
