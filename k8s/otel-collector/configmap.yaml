@@ -28,6 +28,11 @@ data:
         default_labels_enabled:
           exporter: true
           job: true
+      elasticsearch:
+        endpoint: http://elasticsearch:9200
+        mapping:
+          mode: ecs
+        logs_index: logs
     service:
       pipelines:
         traces:
@@ -41,4 +46,4 @@ data:
         logs:
           receivers: [otlp]
           processors: [batch]
-          exporters: [loki]
+          exporters: [loki, elasticsearch]

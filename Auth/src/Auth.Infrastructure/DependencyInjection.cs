@@ -20,7 +20,12 @@ public static class DependencyInjection
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
 
         var cs = config.GetConnectionString("Default") ?? "Host=localhost;Port=5432;Database=creature_realms;Username=cro_admin;Password=postgres";
-        services.AddDbContext<AppDbContext>(o => o.UseNpgsql(cs));
+        services.AddDbContext<AppDbContext>(o =>
+            o.UseNpgsql(cs, b =>
+            {
+                b.MigrationsAssembly(typeof(AppDbContext).Assembly.GetName().Name);
+                b.EnableRetryOnFailure(5, TimeSpan.FromSeconds(2), null);
+            }));
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IAuthService, AuthService>();

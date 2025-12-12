@@ -3,8 +3,9 @@ using Auth.Application.DTOs;
 using Auth.Application.Interfaces;
 using Auth.Infrastructure;
 using Auth.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Observability.Extensions;
@@ -13,7 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddObservability(builder.Configuration, "auth");
 
-var jwtKey = builder.Configuration["JWT:Key"] ?? "change-this-key";
+var jwtKey = builder.Configuration["JWT:Key"] ?? "change-this-key-please-32-chars!";
 var issuer = builder.Configuration["JWT:Issuer"] ?? "creature-realms";
 var audience = builder.Configuration["JWT:Audience"] ?? "creature-realms-client";
 var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
@@ -67,6 +68,41 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
+
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        try
+        {
+            var feature = context.Features.Get<IExceptionHandlerPathFeature>();
+            var ex = feature?.Error;
+            IResult result = ex switch
+            {
+                InvalidOperationException ioe when ioe.Message == "email_in_use" => Results.Conflict(new { error = "email_in_use" }),
+                InvalidOperationException ioe when ioe.Message == "invalid_credentials" => Results.Unauthorized(),
+                InvalidOperationException ioe when ioe.Message == "invalid_refresh_token" => Results.BadRequest(new { error = "invalid_refresh_token" }),
+                InvalidOperationException ioe when ioe.Message == "revoked_refresh_token" => Results.BadRequest(new { error = "revoked_refresh_token" }),
+                InvalidOperationException ioe when ioe.Message == "expired_refresh_token" => Results.BadRequest(new { error = "expired_refresh_token" }),
+                InvalidOperationException ioe when ioe.Message == "user_not_found" => Results.NotFound(new { error = "user_not_found" }),
+                InvalidOperationException ioe => Results.BadRequest(new { error = ioe.Message }),
+                _ => Results.Problem(statusCode: 500)
+            };
+            await result.ExecuteAsync(context);
+        }
+        catch
+        {
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("error");
+        }
+    });
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -56,6 +56,16 @@ spec:
                 secretKeyRef:
                   name: auth-secret
                   key: ConnectionStrings__Default
+            - name: Logging__Elasticsearch__ShipTo__NodeUris__0
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: Logging__Elasticsearch__ShipTo__NodeUris__0
+            - name: Logging__Elasticsearch__Index
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: Logging__Elasticsearch__Index
           readinessProbe:
             httpGet:
               path: /healthz

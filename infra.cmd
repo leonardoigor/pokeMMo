@@ -90,6 +90,8 @@ if exist "%BASE%\\kustomization.yaml" (
   if /i "%OP%"=="apply" (
     echo Forcando atualizacao dos workloads...
     kubectl rollout restart deployment auth -n creature-realms
+    kubectl rollout restart deployment users -n creature-realms
+    kubectl rollout restart deployment gateway -n creature-realms
     kubectl rollout restart deployment otel-collector -n creature-realms
     kubectl rollout restart statefulset postgres -n creature-realms
     kubectl rollout restart statefulset redis -n creature-realms

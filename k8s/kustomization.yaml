@@ -13,7 +13,7 @@ resources:
   - redis/networkpolicy.yaml
   - ../Auth/k8s
   - ../Users/k8s
+  - ../Gateway/k8s
   - elasticsearch
   - kibana
   - elastic-agent
-  - promtail

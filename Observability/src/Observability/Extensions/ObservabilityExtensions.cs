@@ -7,6 +7,8 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Logs;
+using OpenTelemetry.Exporter;
+using Elastic.Extensions.Logging;
 using Observability.Logging;
 
 namespace Observability.Extensions;
@@ -46,22 +48,19 @@ public static class ObservabilityExtensions
 
         services.AddLogging(lb =>
         {
-            lb.AddSimpleConsole(o =>
+            lb.AddJsonConsole();
+            lb.AddElasticsearch(options =>
             {
-                o.IncludeScopes = true;
-                o.SingleLine = true;
-                o.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ ";
-            });
-            lb.AddOpenTelemetry(o =>
-            {
-                o.IncludeFormattedMessage = true;
-                o.IncludeScopes = true;
-                o.ParseStateValues = true;
-                o.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName));
+                var section = config.GetSection("Logging:Elasticsearch");
+                if (section.Exists()) section.Bind(options);
             });
         });
 
-        services.AddSingleton<RequestResponseLoggingMiddleware>();
+        services.AddSingleton<RequestResponseLoggingMiddleware>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<RequestResponseLoggingMiddleware>>();
+            return new RequestResponseLoggingMiddleware(logger, serviceName);
+        });
         return services;
     }
 
