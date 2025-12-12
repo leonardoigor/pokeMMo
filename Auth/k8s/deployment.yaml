@@ -19,9 +19,18 @@ spec:
         app.kubernetes.io/part-of: creature-realms
         app.kubernetes.io/component: backend
     spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - >
+              echo "Esperando postgres:5432 (ate 15s)...";
+              for i in $(seq 1 15); do pg_isready -h postgres -p 5432 && exit 0; sleep 1; done; echo "Timeout"; exit 1;
       containers:
         - name: auth
-          image: creature-realms/auth:latest
+          image: igormendonca/auth:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

@@ -10,3 +10,4 @@ metadata:
 data:
   JWT__Issuer: creature-realms
   JWT__Audience: creature-realms-client
+  OTEL__Endpoint: http://otel-collector:4318

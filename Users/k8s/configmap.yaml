@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: auth-config
+  name: users-config
   namespace: creature-realms
   labels:
-    app.kubernetes.io/name: auth
+    app.kubernetes.io/name: users
     app.kubernetes.io/part-of: creature-realms
     app.kubernetes.io/component: backend
 data:
-  JWT__Issuer: creature-realms
-  JWT__Audience: creature-realms-client
+  ASPNETCORE_URLS: http://+:8081
+  OTEL__Endpoint: http://otel-collector:4318

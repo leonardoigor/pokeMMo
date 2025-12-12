@@ -13,6 +13,7 @@ spec:
       port: 5432
       targetPort: 5432
       protocol: TCP
+      nodePort: 30432
   selector:
     app.kubernetes.io/name: postgres
-  type: ClusterIP
+  type: NodePort
