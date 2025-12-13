@@ -1,0 +1,8 @@
+     [
+        {
+            "tileId": "0",
+            "nome": "WalkableCanSee",
+            "isWalkable": false,
+            "blocksVision": false
+        }
+    ]

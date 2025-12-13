@@ -1,0 +1,45 @@
+{
+  "namespace": "creature-realms",
+  "image": "igormendonca/world:latest",
+  "regions": [
+    {
+      "name": "square1",
+      "minX": -9,
+      "maxX": -5,
+      "minY": -9,
+      "maxY": -5,
+      "neighbors": {
+        "east": "square2",
+        "west": null,
+        "north": null,
+        "south": null
+      }
+    },
+    {
+      "name": "square2",
+      "minX": -4,
+      "maxX": 0,
+      "minY": -9,
+      "maxY": -5,
+      "neighbors": {
+        "west": "square1",
+        "east": null,
+        "north": null,
+        "south": null
+      }
+    },
+    {
+      "name": "square3",
+      "minX": -5,
+      "maxX": 0,
+      "minY": -9,
+      "maxY": -5,
+      "neighbors": {
+        "west": "square1",
+        "east": null,
+        "north": null,
+        "south": null
+      }
+    }
+  ]
+}

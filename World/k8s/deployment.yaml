@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: world
+  namespace: creature-realms
+  labels:
+    app.kubernetes.io/name: world
+    app.kubernetes.io/part-of: creature-realms
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: world
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: world
+        app.kubernetes.io/part-of: creature-realms
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: world
+          image: igormendonca/world:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8082
+            - name: tcp
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_URLS
+              valueFrom:
+                configMapKeyRef:
+                  name: world-config
+                  key: ASPNETCORE_URLS
+            - name: MAP_DATA_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: world-config
+                  key: MAP_DATA_DIR
+            - name: REGION_MIN_X
+              value: "0"
+            - name: REGION_MAX_X
+              value: "100"
+            - name: REGION_MIN_Y
+              value: "0"
+            - name: REGION_MAX_Y
+              value: "100"
+            - name: NEIGHBOR_EAST
+              value: "world-2:9090"
+            - name: NEIGHBOR_WEST
+              value: ""
+            - name: NEIGHBOR_NORTH
+              value: ""
+            - name: NEIGHBOR_SOUTH
+              value: ""
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: maps
+              mountPath: /data/maps
+      volumes:
+        - name: maps
+          emptyDir: {}

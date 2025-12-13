@@ -20,4 +20,13 @@ public class CharacterRepository : ICharacterRepository
         await _db.Characters.AddAsync(character, ct);
         await _db.SaveChangesAsync(ct);
     }
+    
+    public async Task DeleteAsync(Character character, CancellationToken ct)
+    {
+        _db.Characters.Remove(character);
+        await _db.SaveChangesAsync(ct);
+    }
+    
+    public Task<int> CountByUserAsync(Guid userId, CancellationToken ct)
+        => _db.Characters.Where(x => x.UserId == userId).CountAsync(ct);
 }

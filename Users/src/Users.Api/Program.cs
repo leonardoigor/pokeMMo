@@ -7,6 +7,10 @@ using Users.Infrastructure;
 using Users.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Observability.Extensions;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddUsersInfrastructure(builder.Configuration);
@@ -17,8 +21,29 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Users API", Version = "v1" });
 });
 
+var jwtIssuer = builder.Configuration["JWT:Issuer"] ?? "creature-realms";
+var jwtAudience = builder.Configuration["JWT:Audience"] ?? "creature-realms-client";
+var jwtKey = builder.Configuration["JWT:Key"] ?? "change-this-key";
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 app.UseRequestResponseLogging();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
@@ -39,6 +64,8 @@ app.MapPost("/users", async (CreateUserRequest req, IUserProfileRepository repo,
 
 app.MapPost("/users/{userId:guid}/characters", async (Guid userId, CreateCharacterRequest req, ICharacterRepository repo, CancellationToken ct) =>
 {
+    var count = await repo.CountByUserAsync(userId, ct);
+    if (count >= 11) return Results.BadRequest("characters_limit_reached");
     var character = new Character(userId, req.Name);
     await repo.AddAsync(character, ct);
     return Results.Ok(new CharacterResponse(character.Id, character.Name));
@@ -50,6 +77,68 @@ app.MapGet("/users/{userId:guid}/characters", async (Guid userId, ICharacterRepo
     return Results.Ok(list.Select(x => new CharacterResponse(x.Id, x.Name)));
 });
 
+app.MapGet("/users/me/characters", async (ClaimsPrincipal user, IUserProfileRepository userRepo, ICharacterRepository charRepo, CancellationToken ct) =>
+{
+    var sub = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? user.FindFirst("sub")?.Value;
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+    if (!Guid.TryParse(sub, out var externalId)) return Results.Unauthorized();
+    var profile = await userRepo.GetByExternalIdAsync(externalId, ct);
+    if (profile is null)
+    {
+        var name = user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst("email")?.Value ?? "Player";
+        var created = new UserProfile(externalId, name);
+        await userRepo.AddAsync(created, ct);
+        profile = created;
+    }
+    var chars = await charRepo.ListByUserAsync(profile.Id, ct);
+    var payload = new CharactersListResponse(chars.Select(x => new CharacterResponse(x.Id, x.Name)));
+    return Results.Ok(payload);
+}).RequireAuthorization();
+app.MapPost("/users/me/characters", async (ClaimsPrincipal user, CreateCharacterRequest req, IUserProfileRepository userRepo, ICharacterRepository charRepo, CancellationToken ct) =>
+{
+    var sub = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? user.FindFirst("sub")?.Value;
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+    if (!Guid.TryParse(sub, out var externalId)) return Results.Unauthorized();
+    var profile = await userRepo.GetByExternalIdAsync(externalId, ct);
+    if (profile is null)
+    {
+        var name = user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst("email")?.Value ?? "Player";
+        var created = new UserProfile(externalId, name);
+        await userRepo.AddAsync(created, ct);
+        profile = created;
+    }
+    var limit = await charRepo.CountByUserAsync(profile.Id, ct);
+    if (limit >= 11) return Results.BadRequest("characters_limit_reached");
+    var character = new Character(profile.Id, req.Name);
+    await charRepo.AddAsync(character, ct);
+    return Results.Ok(new CharacterResponse(character.Id, character.Name));
+}).RequireAuthorization();
+app.MapDelete("/characters/{characterId:guid}", async (Guid characterId, ClaimsPrincipal user, IUserProfileRepository userRepo, ICharacterRepository charRepo, CancellationToken ct) =>
+{
+    var sub = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? user.FindFirst("sub")?.Value;
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+    if (!Guid.TryParse(sub, out var externalId)) return Results.Unauthorized();
+    var profile = await userRepo.GetByExternalIdAsync(externalId, ct);
+    if (profile is null) return Results.NotFound();
+    var character = await charRepo.GetByIdAsync(characterId, ct);
+    if (character is null) return Results.NotFound();
+    if (character.UserId != profile.Id) return Results.Forbid();
+    await charRepo.DeleteAsync(character, ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+app.MapDelete("/users/characters/{characterId:guid}", async (Guid characterId, ClaimsPrincipal user, IUserProfileRepository userRepo, ICharacterRepository charRepo, CancellationToken ct) =>
+{
+    var sub = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? user.FindFirst("sub")?.Value;
+    if (string.IsNullOrEmpty(sub)) return Results.Unauthorized();
+    if (!Guid.TryParse(sub, out var externalId)) return Results.Unauthorized();
+    var profile = await userRepo.GetByExternalIdAsync(externalId, ct);
+    if (profile is null) return Results.NotFound();
+    var character = await charRepo.GetByIdAsync(characterId, ct);
+    if (character is null) return Results.NotFound();
+    if (character.UserId != profile.Id) return Results.Forbid();
+    await charRepo.DeleteAsync(character, ct);
+    return Results.NoContent();
+}).RequireAuthorization();
 app.MapPut("/characters/{characterId:guid}/state", async (Guid characterId, CharacterStateRequest req, ICharacterStateRepository stateRepo, CancellationToken ct) =>
 {
     await stateRepo.EnsureTableAsync(characterId, ct);
@@ -63,6 +152,37 @@ app.MapGet("/characters/{characterId:guid}/state", async (Guid characterId, ICha
     var state = await stateRepo.GetAsync(characterId, ct);
     if (state is null) return Results.NotFound();
     return Results.Ok(new CharacterStateResponse(state.PosX, state.PosY, state.PosZ, state.World, state.ItemsJson, state.ClothesJson, state.PartyJson, state.PcJson, state.UpdatedAt));
+});
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<UsersDbContext>();
+    app.Logger.LogInformation("Applying EF Core migrations for UsersDbContext...");
+    try
+    {
+        db.Database.SetCommandTimeout(TimeSpan.FromMinutes(2));
+        db.Database.Migrate();
+        var applied = db.Database.GetAppliedMigrations().ToArray();
+        var pending = db.Database.GetPendingMigrations().ToArray();
+        app.Logger.LogInformation("EF Core migrations applied successfully. applied={applied} pending={pending}",
+            string.Join(",", applied), string.Join(",", pending));
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to apply EF Core migrations");
+        throw;
+    }
+}
+
+app.MapGet("/debug/migrations", (UsersDbContext db) =>
+{
+    var applied = db.Database.GetAppliedMigrations();
+    var pending = db.Database.GetPendingMigrations();
+    return Results.Ok(new
+    {
+        applied = applied,
+        pending = pending
+    });
 });
 
 app.Run();

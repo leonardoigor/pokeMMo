@@ -76,7 +76,19 @@ if /i "%OP%"=="apply" (
       docker push !IMAGE!
       if errorlevel 1 exit /b !errorlevel!
     ) else (
-      echo Dockerfile do Users nao encontrado em Users\\Dockerfile
+      echo Dockerfile do Users nao encontrado em Users\Dockerfile
+    )
+    echo Construindo e enviando imagem do microservico World...
+    if exist "World\Dockerfile" (
+      set IMAGE=igormendonca/world:latest
+      echo - docker build -t !IMAGE! -f World\Dockerfile .
+      docker build -t !IMAGE! -f World\Dockerfile .
+      if errorlevel 1 exit /b !errorlevel!
+      echo - docker push !IMAGE!
+      docker push !IMAGE!
+      if errorlevel 1 exit /b !errorlevel!
+    ) else (
+      echo Dockerfile do World nao encontrado em World\Dockerfile
     )
   ) else (
     echo Modo rapido: pulando build/push de imagem.
@@ -92,6 +104,7 @@ if exist "%BASE%\\kustomization.yaml" (
     kubectl rollout restart deployment auth -n creature-realms
     kubectl rollout restart deployment users -n creature-realms
     kubectl rollout restart deployment gateway -n creature-realms
+    kubectl rollout restart deployment world -n creature-realms
     kubectl rollout restart deployment otel-collector -n creature-realms
     kubectl rollout restart statefulset postgres -n creature-realms
     kubectl rollout restart statefulset redis -n creature-realms

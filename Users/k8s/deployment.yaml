@@ -41,6 +41,31 @@ spec:
                 configMapKeyRef:
                   name: users-config
                   key: ASPNETCORE_URLS
+            - name: JWT__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: users-config
+                  key: JWT__Issuer
+            - name: JWT__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: users-config
+                  key: JWT__Audience
+            - name: JWT__Key
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: JWT__Key
+            - name: Logging__Elasticsearch__ShipTo__NodeUris__0
+              valueFrom:
+                configMapKeyRef:
+                  name: users-config
+                  key: Logging__Elasticsearch__ShipTo__NodeUris__0
+            - name: Logging__Elasticsearch__Index
+              valueFrom:
+                configMapKeyRef:
+                  name: users-config
+                  key: Logging__Elasticsearch__Index
             - name: ConnectionStrings__Default
               valueFrom:
                 secretKeyRef:

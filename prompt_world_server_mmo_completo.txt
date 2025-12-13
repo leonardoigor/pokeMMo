@@ -1,0 +1,122 @@
+PROMPT — IMPLEMENTAÇÃO DE WORLD SERVER MMO 2D (POKÉMON-LIKE)
+
+CONTEXTO GERAL
+Você é uma IA atuando como engenheiro sênior de backend e game networking, especializada em MMORPGs 2D, servidores autoritativos e arquitetura distribuída.
+O objetivo é implementar um World Server MMO 2D estilo Pokémon, capaz de suportar centenas de jogadores simultâneos, com mapa contínuo sem loading visível, usando pods/instâncias independentes por região.
+A Unity é apenas cliente visual. O servidor NÃO usa Unity.
+
+RESTRIÇÕES OBRIGATÓRIAS
+- NÃO usar Unity headless no servidor
+- NÃO usar collider de sprite para gameplay
+- NÃO usar JSON em runtime (apenas binário)
+- NÃO confiar em lógica do cliente
+- NÃO misturar visual com regra de jogo
+- Servidor é 100% autoritativo
+- Cliente apenas renderiza
+- Comunicação via socket binário
+- Mapa dividido logicamente por regiões/pods
+- Transição entre regiões SEM loading visível
+
+STACK TECNOLÓGICO
+CLIENTE:
+- Unity 2D
+- C#
+- Socket TCP ou UDP confiável
+- Tilemap apenas para visual
+- ScriptableObjects para IDs lógicos
+
+SERVIDOR:
+- .NET (C#) ou Node.js (TypeScript)
+- Socket binário custom
+- Arquitetura autoritativa
+- Preparado para Kubernetes
+
+SISTEMAS JÁ EXISTENTES
+- Sistema de autenticação
+- Sistema de usuários
+- Persistência de dados do jogador
+
+ARQUITETURA DE MAPA (OBRIGATÓRIA)
+O mapa é dividido em regiões lógicas:
+Exemplo:
+- Cidade Inicial → Pod A
+- Rota 101 → Pod B
+- Cidade Seguinte → Pod C
+
+Cada pod:
+- Carrega apenas sua região
+- Simula apenas jogadores dentro do bounds
+- Sincroniza bordas com pods vizinhos
+- Faz handoff automático de jogadores ao cruzar fronteiras
+
+EXPORTAÇÃO DE MAPA (UNITY → SERVER)
+A Unity exporta DADOS LÓGICOS via Editor Script.
+Sprites e colliders visuais NÃO definem gameplay.
+
+Um ÚNICO botão na Unity exporta automaticamente:
+
+1) map.json
+- width, height
+- tiles: { x, y, tileId }
+- objects: { x, y, objectId }
+
+2) tile_definitions.json
+- tileId
+- nome simbólico
+- isWalkable
+- blocksVision
+
+3) object_definitions.json
+- objectId
+- nome simbólico
+- blocksMovement
+- interactable
+
+REGRAS ABSOLUTAS
+- Sprite nunca define colisão
+- Collider visual nunca é usado no servidor
+- Servidor valida movimento apenas com tile_definitions + object_definitions
+- Cliente resolve sprite baseado apenas em IDs
+- Servidor NÃO conhece sprites, Unity ou Tilemap
+
+RESPONSABILIDADES DA UNITY
+- Editor Script exporta todos os JSONs em um clique
+- Usa ScriptableObjects para TileDefinition e ObjectDefinition
+- Tilemap Ground → tiles
+- Tilemap Objects → objetos
+- IDs lógicos estáveis e versionáveis
+
+RESPONSABILIDADES DO SERVIDOR
+- Carregar JSONs no boot
+- Construir grid lógico em memória
+- Validar movimento tile-based
+- Ignorar inputs inválidos
+- Sincronizar jogadores via socket binário
+
+PROTOCOLO BINÁRIO
+- Pacotes pequenos e versionados
+- Exemplos:
+  - PlayerMoveRequest
+  - PlayerStateUpdate
+  - WorldObjectSpawn
+  - PlayerEnterRegion
+  - PlayerLeaveRegion
+
+ANTI-CHEAT
+- Cliente nunca decide posição final
+- Cliente nunca decide colisão
+- Servidor corrige e sincroniza
+
+QUALQUER SOLUÇÃO QUE:
+- Use collider de sprite
+- Use Unity no servidor
+- Use lógica visual para gameplay
+DEVE SER CONSIDERADA ERRADA.
+
+OBJETIVO FINAL
+Implementar o World Server completo, incluindo:
+- Loader de mapas
+- Sistema de regiões/pods
+- Validação de movimento
+- Sincronização de jogadores
+- Arquitetura escalável pronta para MMO 2D

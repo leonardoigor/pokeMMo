@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: world-config
+  namespace: creature-realms
+  labels:
+    app.kubernetes.io/name: world
+    app.kubernetes.io/part-of: creature-realms
+    app.kubernetes.io/component: backend
+data:
+  ASPNETCORE_URLS: http://+:8082
+  MAP_DATA_DIR: /data/maps
+

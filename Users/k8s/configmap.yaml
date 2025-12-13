@@ -9,4 +9,8 @@ metadata:
     app.kubernetes.io/component: backend
 data:
   ASPNETCORE_URLS: http://+:8081
+  JWT__Issuer: creature-realms
+  JWT__Audience: creature-realms-client
   OTEL__Endpoint: http://otel-collector:4318
+  Logging__Elasticsearch__ShipTo__NodeUris__0: http://elasticsearch:9200
+  Logging__Elasticsearch__Index: dotnet-{0:yyyy.MM.dd}

@@ -24,6 +24,9 @@ data:
       upstream users_upstream {
         server users:8081;
       }
+      upstream world_upstream {
+        server world:8082;
+      }
 
       server {
         listen 8080;
@@ -33,19 +36,75 @@ data:
           return 200 'ok';
         }
 
-        location ^~ /gateway/auth/ {
+        location ~ ^/gateway/auth/(.*)$ {
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_pass http://auth_upstream/auth/;
+          proxy_pass http://auth_upstream/auth/$1;
         }
-        location ^~ /gateway/users/ {
+        location = /gateway/auth/healthz {
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_pass http://users_upstream/users/;
+          proxy_pass http://auth_upstream/healthz;
+        }
+        location ^~ /gateway/auth/swagger/ {
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_pass http://auth_upstream/swagger/;
+        }
+        location = /gateway/auth/swagger {
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_pass http://auth_upstream/swagger;
+        }
+        location ~ ^/gateway/users/(.*)$ {
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_pass http://users_upstream/users/$1;
+        }
+        location = /gateway/users/healthz {
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_pass http://users_upstream/healthz;
+        }
+        location ^~ /gateway/users/swagger/ {
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_pass http://users_upstream/swagger/;
+        }
+        location = /gateway/users/swagger {
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_pass http://users_upstream/swagger;
+        }
+        location ~ ^/gateway/world/(.*)$ {
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_pass http://world_upstream/world/$1;
+        }
+        location = /gateway/world/healthz {
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_pass http://world_upstream/healthz;
         }
       }
     }
