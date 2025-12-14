@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: directory-regions
+  namespace: creature-realms
+  labels:
+    app.kubernetes.io/name: directory
+    app.kubernetes.io/part-of: creature-realms
+    app.kubernetes.io/component: backend
+data:
+  world.regions.json: |
+    {
+      "namespace": "creature-realms",
+      "regions": [
+        { "name": "square1", "minX": -9, "maxX": -5, "minY": -9, "maxY": -5 },
+        { "name": "square2", "minX": -4, "maxX": 0,  "minY": -9, "maxY": -5 },
+        { "name": "square3", "minX": -5, "maxX": 0,  "minY": -9, "maxY": -5 }
+      ]
+    }

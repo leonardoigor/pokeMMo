@@ -78,17 +78,17 @@ if /i "%OP%"=="apply" (
     ) else (
       echo Dockerfile do Users nao encontrado em Users\Dockerfile
     )
-    echo Construindo e enviando imagem do microservico World...
-    if exist "World\Dockerfile" (
-      set IMAGE=igormendonca/world:latest
-      echo - docker build -t !IMAGE! -f World\Dockerfile .
-      docker build -t !IMAGE! -f World\Dockerfile .
+    echo Construindo e enviando imagem do microservico Directory...
+    if exist "Directory\Dockerfile" (
+      set IMAGE=igormendonca/directory:latest
+      echo - docker build -t !IMAGE! -f Directory\Dockerfile .
+      docker build -t !IMAGE! -f Directory\Dockerfile .
       if errorlevel 1 exit /b !errorlevel!
       echo - docker push !IMAGE!
       docker push !IMAGE!
       if errorlevel 1 exit /b !errorlevel!
     ) else (
-      echo Dockerfile do World nao encontrado em World\Dockerfile
+      echo Dockerfile do Directory nao encontrado em Directory\Dockerfile
     )
   ) else (
     echo Modo rapido: pulando build/push de imagem.
@@ -104,8 +104,11 @@ if exist "%BASE%\\kustomization.yaml" (
     kubectl rollout restart deployment auth -n creature-realms
     kubectl rollout restart deployment users -n creature-realms
     kubectl rollout restart deployment gateway -n creature-realms
-    kubectl rollout restart deployment world -n creature-realms
-    kubectl rollout restart deployment otel-collector -n creature-realms
+    kubectl rollout restart deployment directory -n creature-realms
+    kubectl get deployment otel-collector -n creature-realms >nul 2>&1
+    if not errorlevel 1 (
+      kubectl rollout restart deployment otel-collector -n creature-realms
+    )
     kubectl rollout restart statefulset postgres -n creature-realms
     kubectl rollout restart statefulset redis -n creature-realms
   )

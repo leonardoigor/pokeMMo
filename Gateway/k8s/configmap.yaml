@@ -24,9 +24,10 @@ data:
       upstream users_upstream {
         server users:8081;
       }
-      upstream world_upstream {
-        server world:8082;
+      upstream directory_upstream {
+        server directory:8085;
       }
+      
 
       server {
         listen 8080;
@@ -34,6 +35,11 @@ data:
 
         location /healthz {
           return 200 'ok';
+        }
+
+        location = /gateway/world/regions.json {
+          default_type application/json;
+          alias /etc/nginx/regions.json;
         }
 
         location ~ ^/gateway/auth/(.*)$ {
@@ -92,19 +98,21 @@ data:
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_pass http://users_upstream/swagger;
         }
-        location ~ ^/gateway/world/(.*)$ {
+        location ~ ^/gateway/directory/(.*)$ {
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_pass http://world_upstream/world/$1;
+          proxy_pass http://directory_upstream/directory/$1;
         }
-        location = /gateway/world/healthz {
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_pass http://world_upstream/healthz;
-        }
+        
       }
+    }
+
+  regions.json: |
+    {
+      "regions": [
+        { "name": "square1", "minX": -9, "maxX": -5, "minY": -9, "maxY": -5, "tcpPort": 9101, "service": "world-square1:9090" },
+        { "name": "square2", "minX": -4, "maxX": 0,  "minY": -9, "maxY": -5, "tcpPort": 9102, "service": "world-square2:9090" }
+      ]
     }

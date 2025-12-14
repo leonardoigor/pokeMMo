@@ -14,6 +14,16 @@ spec:
       targetPort: 8080
       protocol: TCP
       nodePort: 30090
+    - name: world-square1
+      port: 9101
+      targetPort: 9101
+      protocol: TCP
+      nodePort: 31001
+    - name: world-square2
+      port: 9102
+      targetPort: 9102
+      protocol: TCP
+      nodePort: 31002
   selector:
     app.kubernetes.io/name: gateway
   type: NodePort

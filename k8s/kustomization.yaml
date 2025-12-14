@@ -14,7 +14,7 @@ resources:
   - ../Auth/k8s
   - ../Users/k8s
   - ../Gateway/k8s
-  - ../World/k8s
+  - ../Directory/k8s
   - elasticsearch
   - kibana
   - elastic-agent

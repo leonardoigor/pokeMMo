@@ -25,10 +25,19 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: world-square1
+              containerPort: 9101
+              protocol: TCP
+            - name: world-square2
+              containerPort: 9102
+              protocol: TCP
           volumeMounts:
             - name: gateway-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+            - name: gateway-config
+              mountPath: /etc/nginx/regions.json
+              subPath: regions.json
           livenessProbe:
             httpGet:
               path: /healthz

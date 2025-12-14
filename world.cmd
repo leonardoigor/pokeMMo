@@ -15,6 +15,7 @@ if /i "%ACTION%"=="up" if /i "%~2"=="--skip-build" (
   set OPT=--skip-build
   goto UPJSON
 )
+if /i "%ACTION%"=="forward" goto FORWARDJSON
 if /i "%ACTION%"=="down" if "%~2"=="" goto DOWNJSON
 if /i "%ACTION%"=="up-json" goto UPJSON
 if /i "%ACTION%"=="down-json" goto DOWNJSON
@@ -54,6 +55,10 @@ goto CONTINUE
 :UPJSON
 if "%FILE%"=="" set FILE=%2
 if "%OPT%"=="" set OPT=%3
+if /i "%FILE%"=="--skip-build" (
+  set OPT=--skip-build
+  set FILE=
+)
 if "%FILE%"=="" set FILE=%~dp0world.regions.json
 if not exist "%FILE%" (
   echo JSON de regioes nao encontrado: %FILE%
@@ -61,6 +66,10 @@ if not exist "%FILE%" (
   exit /b 1
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\world_json.ps1" -File "%FILE%" -Mode up -Opt "%OPT%"
+if errorlevel 1 exit /b !errorlevel!
+rem apos aplicar, iniciar port-forward para acesso local
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\world_forward.ps1" -File "%FILE%" -BasePort 9100
+exit /b %errorlevel%
 exit /b 0
 
 :DOWNJSON
@@ -71,8 +80,27 @@ if not exist "%FILE%" (
   echo Informe o caminho: %~n0 down-json ^<caminho-do-json^>
   exit /b 1
 )
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\world_forward.ps1" -Stop
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\world_json.ps1" -File "%FILE%" -Mode down
 exit /b 0
+
+:FORWARDJSON
+set ARG=%2
+if /i "%ARG%"=="stop" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\world_forward.ps1" -Stop
+  exit /b %errorlevel%
+)
+set FILE=%2
+set BASEPORT=%3
+if "%FILE%"=="" set FILE=%~dp0world.regions.json
+if "%BASEPORT%"=="" set BASEPORT=9100
+if not exist "%FILE%" (
+  echo JSON de regioes nao encontrado: %FILE%
+  echo Informe o caminho: %~n0 forward ^<caminho-do-json^> [basePort]
+  exit /b 1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\world_forward.ps1" -File "%FILE%" -BasePort %BASEPORT%
+exit /b %errorlevel%
 
 :CONTINUE
 
