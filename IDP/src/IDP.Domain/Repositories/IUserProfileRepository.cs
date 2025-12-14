@@ -1,0 +1,10 @@
+using IDP.Domain.Entities;
+
+namespace IDP.Domain.Repositories;
+
+public interface IUserProfileRepository
+{
+    Task<UserProfile?> GetByExternalIdAsync(Guid externalId, CancellationToken ct);
+    Task<UserProfile?> GetByIdAsync(Guid id, CancellationToken ct);
+    Task AddAsync(UserProfile profile, CancellationToken ct);
+}

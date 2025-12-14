@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: idp
+  namespace: creature-realms
+  labels:
+    app.kubernetes.io/name: idp
+    app.kubernetes.io/part-of: creature-realms
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: idp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: idp
+        app.kubernetes.io/part-of: creature-realms
+        app.kubernetes.io/component: backend
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - >
+              echo "Esperando postgres:5432 (ate 15s)...";
+              for i in $(seq 1 15); do pg_isready -h postgres -p 5432 && exit 0; echo "postgres:5432 - no response"; sleep 1; done; echo "Timeout ao esperar postgres"; exit 1;
+      containers:
+        - name: idp
+          image: igormendonca/idp:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: ASPNETCORE_URLS
+              valueFrom:
+                configMapKeyRef:
+                  name: idp-config
+                  key: ASPNETCORE_URLS
+            - name: JWT__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: idp-config
+                  key: JWT__Issuer
+            - name: JWT__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: idp-config
+                  key: JWT__Audience
+            - name: JWT__Key
+              valueFrom:
+                secretKeyRef:
+                  name: idp-secret
+                  key: JWT__Key
+            - name: Logging__Elasticsearch__ShipTo__NodeUris__0
+              valueFrom:
+                configMapKeyRef:
+                  name: idp-config
+                  key: Logging__Elasticsearch__ShipTo__NodeUris__0
+            - name: Logging__Elasticsearch__Index
+              valueFrom:
+                configMapKeyRef:
+                  name: idp-config
+                  key: Logging__Elasticsearch__Index
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: idp-secret
+                  key: ConnectionStrings__Default
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

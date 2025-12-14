@@ -66,17 +66,17 @@ if /i "%OP%"=="apply" (
     ) else (
       echo Dockerfile do Auth nao encontrado em Auth\\Dockerfile
     )
-    echo Construindo e enviando imagem do microservico Users...
-    if exist "Users\\Dockerfile" (
-      set IMAGE=igormendonca/users:latest
-      echo - docker build -t !IMAGE! -f Users\\Dockerfile .
-      docker build -t !IMAGE! -f Users\\Dockerfile .
+    echo Construindo e enviando imagem do microservico IDP...
+    if exist "IDP\\Dockerfile" (
+      set IMAGE=igormendonca/idp:latest
+      echo - docker build -t !IMAGE! -f IDP\\Dockerfile .
+      docker build -t !IMAGE! -f IDP\\Dockerfile .
       if errorlevel 1 exit /b !errorlevel!
       echo - docker push !IMAGE!
       docker push !IMAGE!
       if errorlevel 1 exit /b !errorlevel!
     ) else (
-      echo Dockerfile do Users nao encontrado em Users\Dockerfile
+      echo Dockerfile do IDP nao encontrado em IDP\Dockerfile
     )
     echo Construindo e enviando imagem do microservico Directory...
     if exist "Directory\Dockerfile" (
@@ -102,7 +102,7 @@ if exist "%BASE%\\kustomization.yaml" (
   if /i "%OP%"=="apply" (
     echo Forcando atualizacao dos workloads...
     kubectl rollout restart deployment auth -n creature-realms
-    kubectl rollout restart deployment users -n creature-realms
+    kubectl rollout restart deployment idp -n creature-realms
     kubectl rollout restart deployment gateway -n creature-realms
     kubectl rollout restart deployment directory -n creature-realms
     kubectl get deployment otel-collector -n creature-realms >nul 2>&1

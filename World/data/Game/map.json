@@ -903,5 +903,11 @@
             "tileId": "0"
         }
     ],
-    "objects": []
+    "objects": [
+        {
+            "x": -4,
+            "y": -1,
+            "objectId": "01"
+        }
+    ]
 }

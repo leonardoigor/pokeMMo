@@ -12,8 +12,6 @@ data:
     {
       "namespace": "creature-realms",
       "regions": [
-        { "name": "square1", "minX": -9, "maxX": -5, "minY": -9, "maxY": -5 },
-        { "name": "square2", "minX": -4, "maxX": 0,  "minY": -9, "maxY": -5 },
-        { "name": "square3", "minX": -5, "maxX": 0,  "minY": -9, "maxY": -5 }
+        { "name": "Littleroot", "minX": -9, "maxX": -3, "minY": 4, "maxY": -5 }
       ]
     }

@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System.IO;
 using System.Text.Json;
+using Observability.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<MapStore>();
@@ -11,7 +13,9 @@ builder.Services.AddSingleton<MovementValidator>();
 builder.Services.AddSingleton<ChunkManager>();
 builder.Services.AddSingleton<RegionConfig>();
 builder.Services.AddHostedService<SocketServer>();
+builder.Services.AddObservability(builder.Configuration, "world");
 var app = builder.Build();
+app.UseRequestResponseLogging();
 var store = app.Services.GetRequiredService<MapStore>();
 var loader = app.Services.GetRequiredService<MapLoader>();
 var chunks = app.Services.GetRequiredService<ChunkManager>();
@@ -68,6 +72,16 @@ app.MapGet("/world/region/bounds", () =>
     };
 });
 app.Run();
+
+public enum PacketType : byte
+{
+    MoveRequest = 0,
+    PositionUpdate = 1,
+    Handoff = 2,
+    ClientConfig = 3,
+    GhostZoneEnter = 4,
+    GhostZoneLeave = 5
+}
 
 public record TileCell(int x, int y, string tileId);
 public record ObjectCell(int x, int y, string objectId);
@@ -185,21 +199,33 @@ public class SocketServer : BackgroundService
     readonly MovementValidator validator;
     readonly ChunkManager chunks;
     readonly RegionConfig regionCfg;
+    readonly ILogger<SocketServer> logger;
     readonly Dictionary<System.Net.Sockets.TcpClient, (int x, int y, (int cx, int cy) chunk)> players = new();
-    public SocketServer(MapStore store, MovementValidator validator, ChunkManager chunks, RegionConfig regionCfg)
+    readonly Dictionary<System.Net.Sockets.TcpClient, int> ghostZones = new();
+    readonly Dictionary<System.Net.Sockets.TcpClient, bool> ghostActive = new();
+    readonly Dictionary<System.Net.Sockets.TcpClient, (string host, int port)?> lastNeighbor = new();
+    public SocketServer(MapStore store, MovementValidator validator, ChunkManager chunks, RegionConfig regionCfg, ILogger<SocketServer> logger)
     {
         this.store = store;
         this.validator = validator;
         this.chunks = chunks;
         this.regionCfg = regionCfg;
+        this.logger = logger;
     }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, 9090);
         listener.Start();
+        logger.LogInformation("socket_listen port={port}", 9090);
         while (!stoppingToken.IsCancellationRequested)
         {
             var client = await listener.AcceptTcpClientAsync(stoppingToken);
+            try
+            {
+                var ep = client.Client?.RemoteEndPoint?.ToString() ?? "unknown";
+                logger.LogInformation("socket_accept remote={remote}", ep);
+            }
+            catch { }
             _ = HandleClient(client, stoppingToken);
         }
     }
@@ -215,7 +241,7 @@ public class SocketServer : BackgroundService
         {
             var read = await stream.ReadAsync(header, 0, 3, ct);
             if (read != 3) break;
-            var type = header[1];
+            var type = (PacketType)header[1];
             var len = header[2];
             var payload = new byte[len];
             var off = 0;
@@ -225,11 +251,43 @@ public class SocketServer : BackgroundService
                 if (r <= 0) break;
                 off += r;
             }
-            if (type == 0)
+            if (type == PacketType.ClientConfig)
+            {
+                var gz = ReadInt(payload, 0);
+                ghostZones[c] = gz < 0 ? 0 : gz;
+                logger.LogInformation("client_config ghost_zone_width={width}", ghostZones[c]);
+            }
+            else if (type == PacketType.MoveRequest)
             {
                 var x = ReadInt(payload, 0);
                 var y = ReadInt(payload, 4);
                 var map = region != null ? store.Maps[region] : null;
+                var gz = ghostZones.TryGetValue(c, out var g) ? g : 0;
+                var neighborNear = ResolveNeighborNear(x, y, gz);
+                var wasActive = ghostActive.TryGetValue(c, out var act) && act;
+                var prevNeighbor = lastNeighbor.TryGetValue(c, out var ln) ? ln : null;
+                if (neighborNear != null)
+                {
+                    if (!wasActive || prevNeighbor == null || prevNeighbor.Value.host != neighborNear.Value.host || prevNeighbor.Value.port != neighborNear.Value.port)
+                    {
+                        var hint = BuildGhostHintMessage(PacketType.GhostZoneEnter, neighborNear.Value.host, neighborNear.Value.port);
+                        await stream.WriteAsync(hint, 0, hint.Length, ct);
+                        ghostActive[c] = true;
+                        lastNeighbor[c] = neighborNear;
+                        logger.LogInformation("ghost_enter host={host} port={port} x={x} y={y}", neighborNear.Value.host, neighborNear.Value.port, x, y);
+                    }
+                }
+                else
+                {
+                    if (wasActive && prevNeighbor != null)
+                    {
+                        var hint = BuildGhostHintMessage(PacketType.GhostZoneLeave, prevNeighbor.Value.host, prevNeighbor.Value.port);
+                        await stream.WriteAsync(hint, 0, hint.Length, ct);
+                        ghostActive[c] = false;
+                        lastNeighbor[c] = null;
+                        logger.LogInformation("ghost_leave host={host} port={port} x={x} y={y}", prevNeighbor.Value.host, prevNeighbor.Value.port, x, y);
+                    }
+                }
                 if (!IsInsideBounds(x, y))
                 {
                     var neighbor = regionCfg.ResolveNeighborFor(x, y);
@@ -237,6 +295,7 @@ public class SocketServer : BackgroundService
                     {
                         var msg = BuildHandoffMessage(neighbor.Value.host, neighbor.Value.port, x, y);
                         await stream.WriteAsync(msg, 0, msg.Length, ct);
+                        logger.LogInformation("handoff host={host} port={port} x={x} y={y}", neighbor.Value.host, neighbor.Value.port, x, y);
                         continue;
                     }
                 }
@@ -249,7 +308,7 @@ public class SocketServer : BackgroundService
                 }
                 var resp = new byte[3 + 8];
                 resp[0] = 1;
-                resp[1] = 1;
+                resp[1] = (byte)PacketType.PositionUpdate;
                 resp[2] = 8;
                 WriteInt(resp, 3, (int)pos.X);
                 WriteInt(resp, 7, (int)pos.Y);
@@ -261,13 +320,26 @@ public class SocketServer : BackgroundService
     {
         return x >= regionCfg.MinX && x <= regionCfg.MaxX && y >= regionCfg.MinY && y <= regionCfg.MaxY;
     }
+    (string host, int port)? ResolveNeighborNear(int x, int y, int ghostZoneWidth)
+    {
+        if (ghostZoneWidth <= 0) return null;
+        var east = ParseHostPort(regionCfg.NeighborEast);
+        var west = ParseHostPort(regionCfg.NeighborWest);
+        var north = ParseHostPort(regionCfg.NeighborNorth);
+        var south = ParseHostPort(regionCfg.NeighborSouth);
+        if (east != null && x > regionCfg.MaxX - ghostZoneWidth) return east;
+        if (west != null && x < regionCfg.MinX + ghostZoneWidth) return west;
+        if (north != null && y > regionCfg.MaxY - ghostZoneWidth) return north;
+        if (south != null && y < regionCfg.MinY + ghostZoneWidth) return south;
+        return null;
+    }
     static byte[] BuildHandoffMessage(string host, int port, int x, int y)
     {
         var hostBytes = System.Text.Encoding.ASCII.GetBytes(host);
         var len = 4 + hostBytes.Length + 4 + 4 + 4;
         var buf = new byte[3 + len];
         buf[0] = 1;
-        buf[1] = 2; // handoff
+        buf[1] = (byte)PacketType.Handoff;
         buf[2] = (byte)len;
         WriteInt(buf, 3, hostBytes.Length);
         System.Array.Copy(hostBytes, 0, buf, 7, hostBytes.Length);
@@ -276,6 +348,28 @@ public class SocketServer : BackgroundService
         WriteInt(buf, off + 4, x);
         WriteInt(buf, off + 8, y);
         return buf;
+    }
+    static byte[] BuildGhostHintMessage(PacketType type, string host, int port)
+    {
+        var hostBytes = System.Text.Encoding.ASCII.GetBytes(host);
+        var len = 4 + hostBytes.Length + 4;
+        var buf = new byte[3 + len];
+        buf[0] = 1;
+        buf[1] = (byte)type;
+        buf[2] = (byte)len;
+        WriteInt(buf, 3, hostBytes.Length);
+        System.Array.Copy(hostBytes, 0, buf, 7, hostBytes.Length);
+        var off = 7 + hostBytes.Length;
+        WriteInt(buf, off, port);
+        return buf;
+    }
+    static (string host, int port)? ParseHostPort(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var parts = s.Split(':');
+        if (parts.Length == 2 && int.TryParse(parts[1], out var p))
+            return (parts[0], p);
+        return null;
     }
     static void WriteInt(byte[] buf, int offset, int value)
     {

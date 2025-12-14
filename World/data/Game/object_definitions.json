@@ -4,5 +4,11 @@
             "nome": "",
             "blocksMovement": false,
             "interactable": false
+        },
+        {
+            "objectId": "01",
+            "nome": "NoMoveNoInteractable",
+            "blocksMovement": true,
+            "interactable": false
         }
     ]

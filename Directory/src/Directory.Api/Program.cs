@@ -4,14 +4,40 @@ using Microsoft.Extensions.Hosting;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
+using Observability.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<RegionCatalog>();
 builder.Services.AddSingleton<RegionMonitor>();
 builder.Services.AddHostedService<RegionMonitorService>();
+builder.Services.AddObservability(builder.Configuration, "directory");
 var app = builder.Build();
+app.UseSwagger();
+app.UseSwaggerUI();
+app.UseRequestResponseLogging();
 var catalog = app.Services.GetRequiredService<RegionCatalog>();
 var monitor = app.Services.GetRequiredService<RegionMonitor>();
+app.MapGet("/healthz", () => Results.Ok("ok"));
+app.MapGet("/directory/spawn", () =>
+{
+    var region = catalog.Regions.FirstOrDefault();
+    if (region is null) return Results.NotFound();
+    var x = (region.MinX + region.MaxX) / 2;
+    var y = (region.MinY + region.MaxY) / 2;
+    var clusterTcp = $"world-{region.Name}:9090";
+    var localTcp = region.TcpPort > 0 ? $"localhost:{region.TcpPort}" : null;
+    var payload = new SpawnResponse
+    {
+        RegionName = region.Name,
+        X = x,
+        Y = y,
+        ClusterTcp = clusterTcp,
+        LocalTcp = localTcp
+    };
+    return Results.Json(payload);
+});
 app.MapGet("/directory/regions", () =>
 {
     var list = monitor.GetStatuses();
@@ -189,4 +215,13 @@ class RegionStatus
     public string ClusterTcp { get; set; }
     public string LocalTcp { get; set; }
     public DateTime LastChecked { get; set; }
+}
+
+class SpawnResponse
+{
+    public string RegionName { get; set; }
+    public int X { get; set; }
+    public int Y { get; set; }
+    public string ClusterTcp { get; set; }
+    public string LocalTcp { get; set; }
 }

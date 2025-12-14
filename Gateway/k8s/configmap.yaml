@@ -21,8 +21,8 @@ data:
       upstream auth_upstream {
         server auth:8080;
       }
-      upstream users_upstream {
-        server users:8081;
+      upstream idp_upstream {
+        server idp:8081;
       }
       upstream directory_upstream {
         server directory:8085;
@@ -70,33 +70,33 @@ data:
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_pass http://auth_upstream/swagger;
         }
-        location ~ ^/gateway/users/(.*)$ {
+        location ~ ^/gateway/idp/(.*)$ {
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_pass http://users_upstream/users/$1;
+          proxy_pass http://idp_upstream/idp/$1;
         }
-        location = /gateway/users/healthz {
+        location = /gateway/idp/healthz {
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_pass http://users_upstream/healthz;
+          proxy_pass http://idp_upstream/healthz;
         }
-        location ^~ /gateway/users/swagger/ {
+        location ^~ /gateway/idp/swagger/ {
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_pass http://users_upstream/swagger/;
+          proxy_pass http://idp_upstream/swagger/;
         }
-        location = /gateway/users/swagger {
+        location = /gateway/idp/swagger {
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_pass http://users_upstream/swagger;
+          proxy_pass http://idp_upstream/swagger;
         }
         location ~ ^/gateway/directory/(.*)$ {
           proxy_set_header Host $host;

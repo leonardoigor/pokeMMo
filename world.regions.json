@@ -1,6 +1,7 @@
 {
   "namespace": "creature-realms",
   "image": "igormendonca/world:latest",
+  "basePort": 9100,
   "regions": [
     {
       "name": "square1",
@@ -8,6 +9,7 @@
       "maxX": -5,
       "minY": -9,
       "maxY": -5,
+      "tcpPort": 9101,
       "neighbors": {
         "east": "square2",
         "west": null,
@@ -21,22 +23,10 @@
       "maxX": 0,
       "minY": -9,
       "maxY": -5,
+      "tcpPort": 9102,
       "neighbors": {
-        "west": "square1",
         "east": null,
-        "north": null,
-        "south": null
-      }
-    },
-    {
-      "name": "square3",
-      "minX": -5,
-      "maxX": 0,
-      "minY": -9,
-      "maxY": -5,
-      "neighbors": {
         "west": "square1",
-        "east": null,
         "north": null,
         "south": null
       }

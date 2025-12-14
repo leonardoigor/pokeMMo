@@ -1,6 +1,7 @@
 Param(
     [string]$File = "$PSScriptRoot\..\world.regions.json",
     [int]$BasePort = 9100,
+    [int]$HttpBasePort = 18000,
     [switch]$Stop = $false,
     [string]$PidFile = "$env:TEMP\world_portforward.pids"
 )
@@ -34,8 +35,10 @@ $image = if ($cfg.image) { $cfg.image } else { 'igormendonca/world:latest' }
 $i = 0
 $mappings = @()
 foreach ($r in $cfg.regions) {
+    $idx = $i
     $name = $r.name
-    $localPort = if ($r.tcpPort) { [int]$r.tcpPort } else { $baseFromJson + $i }
+    $localPort = if ($r.tcpPort) { [int]$r.tcpPort } else { $baseFromJson + $idx }
+    $localHttp = $HttpBasePort + $idx
     $i++
     $svcName = ("world-{0}" -f $name)
     if ([string]::IsNullOrWhiteSpace($name)) { Write-Host "Aviso: nome de regiao vazio, pulando."; continue }
@@ -53,6 +56,15 @@ foreach ($r in $cfg.regions) {
     } catch {
         Write-Host "Aviso: porta $localPort em uso, pulando esta regiao."
         continue
+    }
+    $httpOk = $true
+    try {
+        $httpListener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $localHttp)
+        $httpListener.Start()
+        $httpListener.Stop()
+    } catch {
+        Write-Host "Aviso: porta HTTP $localHttp em uso, pulando forward HTTP desta regiao."
+        $httpOk = $false
     }
     $target = $null
     if ($svcExists) {
@@ -94,9 +106,19 @@ foreach ($r in $cfg.regions) {
         if (-not (Test-Path $PidFile)) { New-Item -Path $PidFile -ItemType File -Force | Out-Null }
         Add-Content -Path $PidFile -Value $proc.Id
     }
+    if ($httpOk) {
+        Write-Host "Forward: localhost:$localHttp -> $target:8082 (ns=$ns)"
+        $httpArgs = "port-forward $target $localHttp:8082 -n $ns"
+        $procHttp = Start-Process -FilePath "kubectl" -ArgumentList $httpArgs -WindowStyle Hidden -PassThru
+        if ($procHttp -and $procHttp.Id) {
+            if (-not (Test-Path $PidFile)) { New-Item -Path $PidFile -ItemType File -Force | Out-Null }
+            Add-Content -Path $PidFile -Value $procHttp.Id
+        }
+    }
     $mappings += [pscustomobject]@{
         name      = $name
         localPort = $localPort
+        localHttp = if ($httpOk) { $localHttp } else { 0 }
         service   = "service/$svcName"
         namespace = $ns
     }
@@ -104,7 +126,11 @@ foreach ($r in $cfg.regions) {
 
 Write-Host "`nMapa de regioes (localhost):"
 $mappings | ForEach-Object {
-    Write-Host ("- {0} -> localhost:{1}" -f $_.name, $_.localPort)
+    if ($_.localHttp -gt 0) {
+        Write-Host ("- {0} -> TCP localhost:{1} | HTTP localhost:{2}" -f $_.name, $_.localPort, $_.localHttp)
+    } else {
+        Write-Host ("- {0} -> TCP localhost:{1}" -f $_.name, $_.localPort)
+    }
 }
 
 exit 0

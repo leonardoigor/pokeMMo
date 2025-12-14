@@ -9,7 +9,9 @@ Param(
   [string]$East = "",
   [string]$West = "",
   [string]$North = "",
-  [string]$South = ""
+  [string]$South = "",
+  [int]$NodePortTcp = 0,
+  [int]$NodePortHttp = 0
 )
 
 if ([string]::IsNullOrWhiteSpace($Name)) { Write-Host "Nome vazio"; exit 1 }
@@ -25,10 +27,15 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($nsExists)) {
   if ($LASTEXITCODE -ne 0) { Write-Host "Falha ao criar namespace."; exit $LASTEXITCODE }
 }
 
+$httpNodeLine = ""
+if ($NodePortHttp -gt 0) { $httpNodeLine = "      nodePort: $NodePortHttp" }
+$tcpNodeLine = ""
+if ($NodePortTcp -gt 0) { $tcpNodeLine = "      nodePort: $NodePortTcp" }
+
 $yaml = @"
 apiVersion: apps/v1
 kind: Deployment
-metadata:
+ metadata:
   name: $dply
   namespace: $Namespace
   labels:
@@ -62,6 +69,12 @@ spec:
               value: http://+:8082
             - name: MAP_DATA_DIR
               value: /data/maps
+            - name: OTEL__Endpoint
+              value: http://otel-collector:4318
+            - name: Logging__Elasticsearch__ShipTo__NodeUris__0
+              value: http://elasticsearch:9200
+            - name: Logging__Elasticsearch__Index
+              value: dotnet-{0:yyyy.MM.dd}
             - name: REGION_NAME
               value: "$Name"
             - name: REGION_MIN_X
@@ -111,21 +124,28 @@ metadata:
 spec:
   selector:
     app.kubernetes.io/name: $dply
-  type: ClusterIP
+  type: NodePort
   ports:
     - name: http
       port: 8082
       targetPort: 8082
       protocol: TCP
+__HTTP_NODEPORT__
     - name: tcp
       port: 9090
       targetPort: 9090
       protocol: TCP
+__TCP_NODEPORT__
 "@
+
+$yaml = $yaml.Replace("__HTTP_NODEPORT__", $httpNodeLine).Replace("__TCP_NODEPORT__", $tcpNodeLine)
+$yaml = $yaml.Replace("`r`n metadata:", "`r`nmetadata:").Replace("`n metadata:", "`nmetadata:")
 
 $tmp = [System.IO.Path]::GetTempFileName()
 Set-Content -Path $tmp -Value $yaml -Encoding UTF8
 Write-Host "Aplicando recursos: $dply e $svc ..."
+Write-Host "YAML gerado:"
+Write-Host $yaml
 kubectl apply -f $tmp
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Remove-Item $tmp -Force

@@ -12,7 +12,7 @@ resources:
   - redis/statefulset.yaml
   - redis/networkpolicy.yaml
   - ../Auth/k8s
-  - ../Users/k8s
+  - ../IDP/k8s
   - ../Gateway/k8s
   - ../Directory/k8s
   - elasticsearch
