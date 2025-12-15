@@ -27,12 +27,19 @@ spec:
               value: http://+:8085
             - name: REGIONS_JSON_PATH
               value: /etc/directory/world.regions.json
+            - name: OTEL__Endpoint
+              value: http://otel-collector:4318
+            - name: Logging__Elasticsearch__ShipTo__NodeUris__0
+              value: http://elasticsearch:9200
+            - name: Logging__Elasticsearch__Index
+              value: dotnet-{0:yyyy.MM.dd}
           ports:
             - name: http
               containerPort: 8085
           volumeMounts:
             - name: regions
               mountPath: /etc/directory
+      serviceAccountName: directory-sa
       volumes:
         - name: regions
           configMap:

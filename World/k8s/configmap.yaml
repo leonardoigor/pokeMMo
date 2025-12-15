@@ -9,5 +9,4 @@ metadata:
     app.kubernetes.io/component: backend
 data:
   ASPNETCORE_URLS: http://+:8082
-  MAP_DATA_DIR: /data/maps
-
+  MAP_DATA_DIR: /app/data

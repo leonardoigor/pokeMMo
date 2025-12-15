@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.IO;
 using System.Text.Json;
+using System.Linq;
 using Observability.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,10 +37,41 @@ if (Directory.Exists(dataDir))
         if (File.Exists(mapPath) && File.Exists(tileDefsPath) && File.Exists(objDefsPath))
         {
             var mapName = new DirectoryInfo(dir).Name;
+            app.Logger.LogInformation("map_load name={name} map={map} tiles={tiles} objects={objects}", mapName, mapPath, tileDefsPath, objDefsPath);
             var data = loader.Load(mapPath, tileDefsPath, objDefsPath);
-            if (data != null) store.AddMap(mapName, data);
+            if (data != null)
+            {
+                store.AddMap(mapName, data);
+                app.Logger.LogInformation(
+                    "map_loaded name={name} width={width} height={height} tiles_count={tiles} objects_count={objects} tiledefs_count={tiledefs} objectdefs_count={objdefs}",
+                    mapName,
+                    data.Width,
+                    data.Height,
+                    data.Tiles.Count,
+                    data.Objects.Count,
+                    data.TileDefs.Count,
+                    data.ObjectDefs.Count
+                );
+                foreach (var kv in data.Objects.Take(5))
+                {
+                    var id = kv.Value;
+                    var def = data.ObjectDefs.TryGetValue(id, out var d) ? d : default;
+                    app.Logger.LogInformation("object_sample x={x} y={y} id={id} blocksMovement={blocks}", kv.Key.x, kv.Key.y, id, def.blocksMovement);
+                }
+                foreach (var kv in data.Tiles.Take(5))
+                {
+                    var id = kv.Value;
+                    var def = data.TileDefs.TryGetValue(id, out var d) ? d : default;
+                    app.Logger.LogInformation("tile_sample x={x} y={y} id={id} isWalkable={walkable}", kv.Key.x, kv.Key.y, id, def.isWalkable);
+                }
+            }
         }
     }
+}
+if (!store.Maps.Any())
+{
+    app.Logger.LogCritical("no_maps_loaded dataDir={dir}", dataDir);
+    Environment.Exit(2);
 }
 app.MapGet("/world/regions", () =>
 {
@@ -176,17 +208,58 @@ public class MovementValidator
 {
     public bool IsWalkable(MapData map, int x, int y)
     {
-        var hasTile = map.Tiles.TryGetValue((x, y), out var tileId);
-        if (!hasTile) return false;
-        if (map.TileDefs.TryGetValue(tileId, out var def))
-        {
-            if (!def.isWalkable) return false;
-        }
         if (map.Objects.TryGetValue((x, y), out var objId))
         {
             if (map.ObjectDefs.TryGetValue(objId, out var od))
             {
                 if (od.blocksMovement) return false;
+            }
+        }
+        if (map.Tiles.TryGetValue((x, y), out var tileId))
+        {
+            if (map.TileDefs.TryGetValue(tileId, out var def))
+            {
+                if (!def.isWalkable) return false;
+                return true;
+            }
+            return true;
+        }
+        return true;
+    }
+    public bool IsAreaWalkable(MapData map, float centerX, float centerY, float halfSize = 0.5f)
+    {
+        var left = centerX - halfSize;
+        var right = centerX + halfSize;
+        var bottom = centerY - halfSize;
+        var top = centerY + halfSize;
+        var txMin = (int)Math.Ceiling(left - 0.5f);
+        var txMax = (int)Math.Floor(right + 0.5f);
+        var tyMin = (int)Math.Ceiling(bottom - 0.5f);
+        var tyMax = (int)Math.Floor(top + 0.5f);
+        for (var tx = txMin; tx <= txMax; tx++)
+        {
+            for (var ty = tyMin; ty <= tyMax; ty++)
+            {
+                var tileLeft = tx - 0.5f;
+                var tileRight = tx + 0.5f;
+                var tileBottom = ty - 0.5f;
+                var tileTop = ty + 0.5f;
+                var intersects = left <= tileRight && right >= tileLeft && bottom <= tileTop && top >= tileBottom;
+                if (!intersects) continue;
+                if (map.Objects.TryGetValue((tx, ty), out var objId))
+                {
+                    if (map.ObjectDefs.TryGetValue(objId, out var od))
+                    {
+                        if (od.blocksMovement) return false;
+                    }
+                }
+                if (map.Tiles.TryGetValue((tx, ty), out var tileId))
+                {
+                    if (map.TileDefs.TryGetValue(tileId, out var def))
+                    {
+                        if (!def.isWalkable) return false;
+                    }
+                }
             }
         }
         return true;
@@ -204,6 +277,8 @@ public class SocketServer : BackgroundService
     readonly Dictionary<System.Net.Sockets.TcpClient, int> ghostZones = new();
     readonly Dictionary<System.Net.Sockets.TcpClient, bool> ghostActive = new();
     readonly Dictionary<System.Net.Sockets.TcpClient, (string host, int port)?> lastNeighbor = new();
+    readonly Dictionary<System.Net.Sockets.TcpClient, long> lastMoveAtMs = new();
+    readonly int moveIntervalMs;
     public SocketServer(MapStore store, MovementValidator validator, ChunkManager chunks, RegionConfig regionCfg, ILogger<SocketServer> logger)
     {
         this.store = store;
@@ -211,9 +286,22 @@ public class SocketServer : BackgroundService
         this.chunks = chunks;
         this.regionCfg = regionCfg;
         this.logger = logger;
+        moveIntervalMs = ReadIntEnvLocal("PLAYER_MOVE_INTERVAL_MS", 150);
     }
+    static int ReadIntEnvLocal(string name, int def)
+    {
+        var v = Environment.GetEnvironmentVariable(name);
+        if (int.TryParse(v, out var n)) return n;
+        return def;
+    }
+    static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!store.Maps.Any())
+        {
+            logger.LogCritical("no_maps_loaded");
+            Environment.Exit(2);
+        }
         var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, 9090);
         listener.Start();
         logger.LogInformation("socket_listen port={port}", 9090);
@@ -233,6 +321,9 @@ public class SocketServer : BackgroundService
     {
         using var c = client;
         var stream = c.GetStream();
+        var remote = "unknown";
+        try { remote = c.Client?.RemoteEndPoint?.ToString() ?? "unknown"; } catch { }
+        logger.LogInformation("player_connected remote={remote}", remote);
         var region = store.Maps.Keys.FirstOrDefault();
         var pos = new System.Numerics.Vector2(0, 0);
         var currentChunk = (0, 0);
@@ -261,11 +352,25 @@ public class SocketServer : BackgroundService
             {
                 var x = ReadInt(payload, 0);
                 var y = ReadInt(payload, 4);
+                logger.LogInformation("move_request x={x} y={y}", x, y);
                 var map = region != null ? store.Maps[region] : null;
                 var gz = ghostZones.TryGetValue(c, out var g) ? g : 0;
                 var neighborNear = ResolveNeighborNear(x, y, gz);
                 var wasActive = ghostActive.TryGetValue(c, out var act) && act;
                 var prevNeighbor = lastNeighbor.TryGetValue(c, out var ln) ? ln : null;
+                var now = NowMs();
+                var last = lastMoveAtMs.TryGetValue(c, out var lm) ? lm : 0;
+                var canMove = true;
+                var isInitial = !players.ContainsKey(c);
+                if (isInitial)
+                {
+                    x = -6;
+                    y = 0;
+                    pos = new System.Numerics.Vector2(x, y);
+                    var chInit = chunks.GetChunkForPosition((int)pos.X, (int)pos.Y);
+                    currentChunk = chInit;
+                    players[c] = ((int)pos.X, (int)pos.Y, chInit);
+                }
                 if (neighborNear != null)
                 {
                     if (!wasActive || prevNeighbor == null || prevNeighbor.Value.host != neighborNear.Value.host || prevNeighbor.Value.port != neighborNear.Value.port)
@@ -299,12 +404,42 @@ public class SocketServer : BackgroundService
                         continue;
                     }
                 }
-                if (map != null && validator.IsWalkable(map, x, y))
+                if (canMove)
                 {
-                    pos = new System.Numerics.Vector2(x, y);
-                    var ch = chunks.GetChunkForPosition((int)pos.X, (int)pos.Y);
-                    currentChunk = ch;
-                    players[c] = ((int)pos.X, (int)pos.Y, ch);
+                    var currX = (int)pos.X;
+                    var currY = (int)pos.Y;
+                    var dx = x - currX;
+                    var dy = y - currY;
+                    if (Math.Abs(dx) + Math.Abs(dy) != 1)
+                    {
+                        if (dx != 0 && dy != 0)
+                        {
+                            dx = dx > 0 ? 1 : -1;
+                            dy = 0;
+                        }
+                        else
+                        {
+                            dx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+                            dy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+                        }
+                        x = currX + dx;
+                        y = currY + dy;
+                    }
+                    var midX = (pos.X + x) * 0.5f;
+                    var midY = (pos.Y + y) * 0.5f;
+                    var areaOk = map != null && validator.IsAreaWalkable(map, midX, midY, 0.5f) && validator.IsAreaWalkable(map, x, y, 0.5f);
+                    if (areaOk)
+                    {
+                        pos = new System.Numerics.Vector2(x, y);
+                        var ch = chunks.GetChunkForPosition((int)pos.X, (int)pos.Y);
+                        currentChunk = ch;
+                        players[c] = ((int)pos.X, (int)pos.Y, ch);
+                        lastMoveAtMs[c] = now;
+                    }
+                    else
+                    {
+                        logger.LogInformation("move_blocked x={x} y={y}", x, y);
+                    }
                 }
                 var resp = new byte[3 + 8];
                 resp[0] = 1;
@@ -313,8 +448,18 @@ public class SocketServer : BackgroundService
                 WriteInt(resp, 3, (int)pos.X);
                 WriteInt(resp, 7, (int)pos.Y);
                 await stream.WriteAsync(resp, 0, resp.Length, ct);
+                logger.LogInformation("position_update x={x} y={y}", (int)pos.X, (int)pos.Y);
             }
         }
+        try
+        {
+            players.Remove(c);
+            ghostZones.Remove(c);
+            ghostActive.Remove(c);
+            lastNeighbor.Remove(c);
+        }
+        catch { }
+        logger.LogInformation("player_disconnected remote={remote} x={x} y={y}", remote, (int)pos.X, (int)pos.Y);
     }
     bool IsInsideBounds(int x, int y)
     {

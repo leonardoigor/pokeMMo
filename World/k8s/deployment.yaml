@@ -40,6 +40,8 @@ spec:
                 configMapKeyRef:
                   name: world-config
                   key: MAP_DATA_DIR
+            - name: PLAYER_MOVE_INTERVAL_MS
+              value: "200"
             - name: REGION_MIN_X
               value: "0"
             - name: REGION_MAX_X
@@ -68,9 +70,3 @@ spec:
               port: 8082
             initialDelaySeconds: 30
             periodSeconds: 10
-          volumeMounts:
-            - name: maps
-              mountPath: /data/maps
-      volumes:
-        - name: maps
-          emptyDir: {}

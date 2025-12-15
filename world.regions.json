@@ -5,30 +5,30 @@
   "regions": [
     {
       "name": "square1",
-      "minX": -9,
-      "maxX": -5,
-      "minY": -9,
-      "maxY": -5,
+      "minX": -10,
+      "maxX": 0,
+      "minY": -6,
+      "maxY": 4,
       "tcpPort": 9101,
       "neighbors": {
         "east": "square2",
-        "west": null,
-        "north": null,
-        "south": null
+        "west": "",
+        "north": "",
+        "south": ""
       }
     },
     {
       "name": "square2",
-      "minX": -4,
-      "maxX": 0,
-      "minY": -9,
-      "maxY": -5,
+      "minX": 0,
+      "maxX": 9,
+      "minY": -6,
+      "maxY": 4,
       "tcpPort": 9102,
       "neighbors": {
-        "east": null,
+        "east": "",
         "west": "square1",
-        "north": null,
-        "south": null
+        "north": "",
+        "south": ""
       }
     }
   ]

@@ -68,7 +68,9 @@ spec:
             - name: ASPNETCORE_URLS
               value: http://+:8082
             - name: MAP_DATA_DIR
-              value: /data/maps
+              value: /app/data
+            - name: PLAYER_MOVE_INTERVAL_MS
+              value: "200"
             - name: OTEL__Endpoint
               value: http://otel-collector:4318
             - name: Logging__Elasticsearch__ShipTo__NodeUris__0
@@ -105,12 +107,6 @@ spec:
               port: 8082
             initialDelaySeconds: 30
             periodSeconds: 10
-          volumeMounts:
-            - name: maps
-              mountPath: /data/maps
-      volumes:
-        - name: maps
-          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

@@ -12,6 +12,7 @@ RUN dotnet publish World/src/World.Server/World.Server.csproj -c ${BUILD_CONFIGU
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=build /out .
+COPY World/data/ /app/data/
 ENV ASPNETCORE_URLS=http://+:8082
 EXPOSE 8082
 EXPOSE 9090
