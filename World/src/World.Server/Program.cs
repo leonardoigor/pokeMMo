@@ -156,7 +156,8 @@ app.MapGet("/world/deadzones", (string? region) =>
 app.MapGet("/world/ghostzone", (string? region, int? gz) =>
 {
     var name = region ?? store.Maps.Keys.FirstOrDefault();
-    var g = gz.HasValue && gz.Value > 0 ? (gz.Value > 2 ? 2 : gz.Value) : 1;
+    // Increased max ghost zone width to 3
+    var g = gz.HasValue && gz.Value > 0 ? (gz.Value > 3 ? 3 : gz.Value) : 1;
     var minX = regionCfg.MinX;
     var maxX = regionCfg.MaxX;
     var minY = regionCfg.MinY;

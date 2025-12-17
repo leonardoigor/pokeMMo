@@ -23,6 +23,10 @@ public class WorldManager
 
     private readonly ConcurrentDictionary<TcpClient, ClientSession> _sessions = new();
     private int _nextClientId = 1;
+    
+    // Topology loaded from local JSON (Source of Truth for Bounds)
+    private readonly List<RegionStatus> _localTopology;
+    private readonly RegionStatus _myLocalDef;
 
     public WorldManager(MapStore store, MovementValidator validator, ChunkManager chunks, RegionConfig regionCfg, DirectoryClient directory, ILogger<WorldManager> logger)
     {
@@ -32,6 +36,45 @@ public class WorldManager
         _regionCfg = regionCfg;
         _directory = directory;
         _logger = logger;
+
+        // Load topology from local JSON immediately. Fail fast if missing.
+        _localTopology = DirectoryClient.LoadLocalRegions();
+        if (_localTopology == null || _localTopology.Count == 0)
+        {
+            Console.Error.WriteLine("CRITICAL: Failed to load world.regions.json topology. Process will exit.");
+            Environment.Exit(1);
+        }
+
+        var myName = _regionCfg.Name ?? "";
+        _myLocalDef = _localTopology.FirstOrDefault(r => string.Equals(r.Name, myName, StringComparison.OrdinalIgnoreCase));
+        
+        if (_myLocalDef == null)
+        {
+            Console.Error.WriteLine($"CRITICAL: Region '{myName}' not found in world.regions.json. Process will exit.");
+            Environment.Exit(1);
+        }
+        
+        _logger.LogInformation("topology_loaded source=json region={region} bounds=[{minX},{maxX}]x[{minY},{maxY}]", 
+            myName, _myLocalDef.MinX, _myLocalDef.MaxX, _myLocalDef.MinY, _myLocalDef.MaxY);
+
+        // Background task to ping Directory API every 20 seconds
+        // Ensures we have up-to-date neighbor ports (Service Ports)
+        Task.Run(async () => 
+        {
+            while (true)
+            {
+                try 
+                { 
+                    // This updates the cache in DirectoryClient
+                    await _directory.GetRegionsAsync(); 
+                } 
+                catch (Exception e) 
+                { 
+                    _logger.LogError(e, "Failed to refresh regions from directory"); 
+                }
+                await Task.Delay(20000);
+            }
+        });
     }
 
     public ClientSession CreateSession(TcpClient client)
@@ -122,59 +165,71 @@ public class WorldManager
 
     public RegionStatus? FindRegionByPosition(int x, int y)
     {
-        try
+        // Use local JSON topology exclusively for geometry/bounds
+        var statuses = _localTopology;
+        foreach (var s in statuses)
         {
-            var statuses = _directory.GetRegions();
-            foreach (var s in statuses)
-            {
-                if (x >= s.MinX && x <= s.MaxX && y >= s.MinY && y <= s.MaxY)
-                    return s;
-            }
+            if (x >= s.MinX && x <= s.MaxX && y >= s.MinY && y <= s.MaxY)
+                return s;
         }
-        catch { }
         return null;
     }
 
     public RegionStatus? GetCurrentRegionStatus(string name)
     {
-        try
+        // Use local JSON topology exclusively for geometry/bounds
+        return _localTopology.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public (int minX, int maxX, int minY, int maxY) GetEffectiveBounds()
+    {
+        // 1. Source of Truth: Local JSON (already loaded in _myLocalDef)
+        // We do NOT use Directory API or Env Vars for bounds anymore.
+        var minX = _myLocalDef.MinX;
+        var maxX = _myLocalDef.MaxX;
+        var minY = _myLocalDef.MinY;
+        var maxY = _myLocalDef.MaxY;
+
+        // 2. Clamp to Map Data dimensions if available
+        // This prevents walking into void if Config > Map
+        if (_store != null && !string.IsNullOrEmpty(_regionCfg.Name) && _store.Maps.TryGetValue(_regionCfg.Name, out var map))
         {
-            var statuses = _directory.GetRegions();
-            return statuses.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            // We assume the map is anchored at (MinX, MinY)
+            // So valid range is [MinX, MinX + Width - 1]
+            var mapMaxX = minX + map.Width - 1;
+            var mapMaxY = minY + map.Height - 1;
+            
+            if (mapMaxX < maxX) maxX = mapMaxX;
+            if (mapMaxY < maxY) maxY = mapMaxY;
         }
-        catch { return null; }
+        
+        return (minX, maxX, minY, maxY);
     }
 
     public bool IsInsideBounds(int x, int y)
     {
-        var me = GetCurrentRegionStatus(_regionCfg.Name ?? "");
-        if (me != null)
+        var b = GetEffectiveBounds();
+        var inside = x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY;
+        
+        if (!inside)
         {
-            var inside = x >= me.MinX && x <= me.MaxX && y >= me.MinY && y <= me.MaxY;
-            if (!inside)
-            {
-                _logger.LogInformation("bounds_check out_of_bounds x={x} y={y} minX={minX} maxX={maxX} minY={minY} maxY={maxY}", x, y, me.MinX, me.MaxX, me.MinY, me.MaxY);
-            }
-            return inside;
+             // Only log if it was previously considered inside by laxer checks, to avoid spam
+             // But here we just log.
+             // _logger.LogInformation("bounds_check fail x={x} y={y} bounds=[{minX},{maxX}]x[{minY},{maxY}]", x, y, b.minX, b.maxX, b.minY, b.maxY);
         }
-        var fallbackInside = x >= _regionCfg.MinX && x <= _regionCfg.MaxX && y >= _regionCfg.MinY && y <= _regionCfg.MaxY;
-        if (!fallbackInside)
-        {
-            _logger.LogInformation("bounds_check out_of_bounds_fallback x={x} y={y} minX={minX} maxX={maxX} minY={minY} maxY={maxY}", x, y, _regionCfg.MinX, _regionCfg.MaxX, _regionCfg.MinY, _regionCfg.MaxY);
-        }
-        return fallbackInside;
+        return inside;
     }
 
     public List<(string region, string host, int port)> ResolveNeighborsNear(string currentRegion, int x, int y, int ghostZoneWidth)
     {
         var list = new List<(string region, string host, int port)>();
-        var statuses = _directory.GetRegions();
-        var me = statuses.FirstOrDefault(s => string.Equals(s.Name, currentRegion, StringComparison.OrdinalIgnoreCase)) ?? FindRegionByPosition(x, y);
-        var minX = me?.MinX ?? _regionCfg.MinX;
-        var maxX = me?.MaxX ?? _regionCfg.MaxX;
-        var minY = me?.MinY ?? _regionCfg.MinY;
-        var maxY = me?.MaxY ?? _regionCfg.MaxY;
-        var gzEff = ghostZoneWidth <= 0 ? 1 : (ghostZoneWidth > 2 ? 2 : ghostZoneWidth);
+        // Use local JSON topology to determine WHO is a neighbor
+        var statuses = _localTopology;
+        
+        var (minX, maxX, minY, maxY) = GetEffectiveBounds();
+        
+        // Increased max ghost zone width to 3
+        var gzEff = ghostZoneWidth <= 0 ? 1 : (ghostZoneWidth > 3 ? 3 : ghostZoneWidth);
         var nearEast = x >= maxX - gzEff;
         var nearWest = x <= minX + gzEff;
         var nearNorth = y >= maxY - gzEff;
@@ -229,25 +284,10 @@ public class WorldManager
             }
         }
         list = list.Where(t => !string.Equals(t.region, currentRegion, StringComparison.OrdinalIgnoreCase)).ToList();
-        if (list.Count == 0)
-        {
-            try
-            {
-                var rr = _directory.Resolve(currentRegion, x, y, ghostZoneWidth);
-                if (rr != null && !string.IsNullOrWhiteSpace(rr.NextRegion))
-                {
-                    var ep = ResolveRegionEndpoint(rr.NextRegion);
-                    if (ep != null)
-                    {
-                        var match = statuses.FirstOrDefault(s => string.Equals(s.Name, rr.NextRegion, StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(ParseRegionNameServer(s.Name) ?? "", rr.NextRegion, StringComparison.OrdinalIgnoreCase));
-                        var regionOut = match?.Name ?? rr.NextRegion;
-                        list.Add((regionOut, ep.Value.host, ep.Value.port));
-                    }
-                }
-            }
-            catch { }
-        }
+        
+        // Removed fallback to Directory API for topology resolution.
+        // Neighbors are determined exclusively by local JSON geometry.
+        
         return list;
     }
 
@@ -260,13 +300,19 @@ public class WorldManager
             if (status != null)
             {
                 (string host, int port)? chosen = null;
-                var hpCluster = ParseHostPort(status.ClusterTcp);
-                if (hpCluster != null) chosen = hpCluster;
+
+                // Priority 1: Local/External Endpoint (Preferred per user instruction for local dev)
+                // "voce precisa o localTcp" - allows external clients (like Unity Editor) to connect via NodePort/Localhost
+                var hpLocal = ParseHostPort(status.LocalTcp);
+                if (hpLocal != null) chosen = hpLocal;
+                
+                // Priority 2: Cluster/Service Endpoint (Fallback for internal cluster traffic)
                 if (chosen == null)
                 {
-                    var hpLocal = ParseHostPort(status.LocalTcp);
-                    if (hpLocal != null) chosen = hpLocal;
+                    var hpCluster = ParseHostPort(status.ClusterTcp);
+                    if (hpCluster != null) chosen = hpCluster;
                 }
+
                 if (chosen != null) return chosen;
             }
         }

@@ -145,7 +145,7 @@ int Deploy(string ns, string image, string name, int minX, int maxX, int minY, i
     yaml.AppendLine("      containers:");
     yaml.AppendLine("        - name: world");
     yaml.AppendLine("          image: " + image);
-    yaml.AppendLine("          imagePullPolicy: Always");
+    yaml.AppendLine("          imagePullPolicy: IfNotPresent");
     yaml.AppendLine("          ports:");
     yaml.AppendLine("            - name: http");
     yaml.AppendLine("              containerPort: 8082");

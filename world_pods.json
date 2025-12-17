@@ -5,9 +5,9 @@
     "regions": [
         {
             "name": "square1",
-            "minX": -10,
+            "minX": -9,
             "maxX": 0,
-            "minY": -6,
+            "minY": -5,
             "maxY": 4,
             "tcpPort": 9101,
             "neighbors": {

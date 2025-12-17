@@ -38,16 +38,28 @@ public class MoveRequestHandler : IPacketHandler
         var region = _store.Maps.Keys.FirstOrDefault();
         var regionName = _regionCfg.Name ?? region ?? "";
 
-        // 1. Initial Setup
-        if (session.LastMoveAtMs == 0)
+        // Calculate distance to detect "Arrivals" (Handoffs/Teleports)
+        // When a player hands off, they "jump" from old pos (or ghost pos) to new pos.
+        // We treat any jump > 1 tile as an arrival, making it a "Safe Spot" to avoid immediate re-teleport.
+        var dxRaw = x - session.X;
+        var dyRaw = y - session.Y;
+        var dist = Math.Abs(dxRaw) + Math.Abs(dyRaw);
+        bool isArrival = dist > 1;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        // 1. Initial Setup or Arrival
+        if (session.LastMoveAtMs == 0 || isArrival)
         {
             session.SafeX = x;
             session.SafeY = y;
+            session.LastArrivalAtMs = now;
         }
 
         // 2. Check Teleports
         var map = region != null ? _store.Maps[region] : null;
-        if (session.LastMoveAtMs > 0 && map != null && map.Teleports.TryGetValue((x, y), out var tp))
+        // Only trigger teleport if it's NOT an arrival jump AND grace period expired
+        if (session.LastMoveAtMs > 0 && !isArrival && (now - session.LastArrivalAtMs > 1500) && map != null && map.Teleports.TryGetValue((x, y), out var tp))
         {
             bool isSafe = session.SafeX.HasValue && session.SafeX == x && session.SafeY == y;
             if (!isSafe)
@@ -56,6 +68,15 @@ public class MoveRequestHandler : IPacketHandler
                 var ep = _world.ResolveRegionEndpoint(tp.targetRegion);
                 var handoffMsg = PacketUtils.BuildHandoffMessage(tp.targetRegion, ep?.host ?? "", ep?.port ?? 0, tp.targetX, tp.targetY);
                 await stream.WriteAsync(handoffMsg, 0, handoffMsg.Length, ct);
+                
+                // Async cleanup: Ensure session is removed even if client doesn't disconnect gracefully
+                _ = Task.Run(async () => 
+                {
+                    await Task.Delay(2000); // Short grace period for client to receive packet
+                    _world.RemoveSession(session.Client);
+                    try { session.Client.Close(); } catch { }
+                });
+
                 return;
             }
         }
@@ -89,7 +110,7 @@ public class MoveRequestHandler : IPacketHandler
         session.ActiveGhosts = activeNow;
 
         // 3. Move Logic
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // now is already defined above
         var canMove = true;
         
         if (session.LastMoveAtMs == 0) // Initial

@@ -28,7 +28,8 @@ public class ClientConfigHandler : IPacketHandler
     public async Task HandleAsync(ClientSession session, byte[] payload, CancellationToken ct)
     {
         var gz = PacketUtils.ReadInt(payload, 0);
-        var clamped = gz <= 0 ? 1 : (gz > 2 ? 2 : gz);
+        // Increased max ghost zone width to 3 per user request
+        var clamped = gz <= 0 ? 1 : (gz > 3 ? 3 : gz);
         session.GhostZoneWidth = clamped;
 
         if (payload.Length > 4)
@@ -47,12 +48,12 @@ public class ClientConfigHandler : IPacketHandler
             
             var me = _world.GetCurrentRegionStatus(regionName) ?? _world.FindRegionByPosition(0, 0);
             
-            var minX = me?.MinX ?? _regionCfg.MinX;
-            var maxX = me?.MaxX ?? _regionCfg.MaxX;
-            var minY = me?.MinY ?? _regionCfg.MinY;
-            var maxY = me?.MaxY ?? _regionCfg.MaxY;
+            // Use centralized logic from WorldManager to determine effective bounds
+            // This considers both RegionConfig and MapData (if loaded)
+            // Ensures client Gizmos match server validation logic exactly.
+            var b = _world.GetEffectiveBounds();
 
-            var infoMsg = PacketUtils.BuildGhostZoneInfoMessage(clamped, minX, maxX, minY, maxY);
+            var infoMsg = PacketUtils.BuildGhostZoneInfoMessage(clamped, b.minX, b.maxX, b.minY, b.maxY);
             await session.Client.GetStream().WriteAsync(infoMsg, 0, infoMsg.Length, ct);
 
             var hello = new byte[3 + 4];

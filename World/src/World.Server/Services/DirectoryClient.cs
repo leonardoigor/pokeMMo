@@ -11,7 +11,7 @@ public class DirectoryClient
     readonly HttpClient http = new HttpClient();
     readonly string baseUrl;
     readonly bool disableHttp;
-    static List<RegionStatus> TryLoadLocalRegions()
+    public static List<RegionStatus> LoadLocalRegions()
     {
         var list = new List<RegionStatus>();
         try
@@ -68,24 +68,65 @@ public class DirectoryClient
         var dis = Environment.GetEnvironmentVariable("DIRECTORY_DISABLE");
         disableHttp = string.Equals(dis, "true", StringComparison.OrdinalIgnoreCase);
     }
+    private List<RegionStatus>? _cachedRegions;
+    private DateTime _lastCacheTime;
+    private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds(15);
+
     public List<RegionStatus> GetRegions()
+    {
+        return GetRegionsAsync().GetAwaiter().GetResult();
+    }
+
+    public async Task<List<RegionStatus>> GetRegionsAsync()
     {
         try
         {
-            var local = TryLoadLocalRegions();
-            if (disableHttp && local.Count == 0)
+            var local = LoadLocalRegions();
+            if (disableHttp)
             {
-                try { Console.Error.WriteLine("world.regions.json não encontrado. Encerrando o processo."); } catch { }
-                try { Environment.Exit(2); } catch { }
-                return new List<RegionStatus>();
+                 if (local.Count == 0)
+                 {
+                     try { Console.Error.WriteLine("world.regions.json não encontrado. Encerrando o processo."); } catch { }
+                     try { Environment.Exit(2); } catch { }
+                 }
+                 return local;
             }
-            if (local.Count > 0 || disableHttp) return local;
-            var url = $"{baseUrl}/directory/regions";
-            var text = http.GetStringAsync(url).GetAwaiter().GetResult();
-            var list = JsonSerializer.Deserialize<List<RegionStatus>>(text);
-            return list ?? new List<RegionStatus>();
+
+            // If we have cached regions and they are fresh, use them
+            if (_cachedRegions != null && DateTime.UtcNow - _lastCacheTime < _cacheDuration)
+            {
+                return _cachedRegions;
+            }
+
+            try
+            {
+                var url = $"{baseUrl}/directory/regions";
+                var text = await http.GetStringAsync(url);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var list = JsonSerializer.Deserialize<List<RegionStatus>>(text, options);
+                
+                if (list != null)
+                {
+                    _cachedRegions = list;
+                    _lastCacheTime = DateTime.UtcNow;
+                    return list;
+                }
+            }
+            catch (Exception ex)
+            {
+                // If HTTP fails but we have local regions, fallback to local
+                if (local.Count > 0) return local;
+                // If we have stale cache, use it
+                if (_cachedRegions != null) return _cachedRegions;
+                throw; // Or return empty list?
+            }
+
+            return local; // Fallback if list was null but no exception
         }
-        catch { return new List<RegionStatus>(); }
+        catch 
+        { 
+            return _cachedRegions ?? new List<RegionStatus>(); 
+        }
     }
     public ResolveResponse? Resolve(string currentRegion, int x, int y, int ghostZoneWidth)
     {

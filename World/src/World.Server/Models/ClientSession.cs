@@ -17,6 +17,7 @@ public class ClientSession
     public bool IsProvisional { get; set; }
     public int? SafeX { get; set; }
     public int? SafeY { get; set; }
+    public long LastArrivalAtMs { get; set; }
 
     public ClientSession(TcpClient client)
     {
