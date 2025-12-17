@@ -23,6 +23,21 @@ public static class PacketUtils
         return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
     }
 
+    public static void WriteString(byte[] buf, int offset, string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value ?? "");
+        WriteInt(buf, offset, bytes.Length);
+        Array.Copy(bytes, 0, buf, offset + 4, bytes.Length);
+    }
+
+    public static string ReadString(byte[] buf, int offset, out int bytesRead)
+    {
+        var len = ReadInt(buf, offset);
+        bytesRead = 4 + len;
+        if (len == 0) return "";
+        return Encoding.UTF8.GetString(buf, offset + 4, len);
+    }
+
     public static byte[] BuildHandoffMessage(string regionName, string host, int port, int x, int y)
     {
         var regionBytes = Encoding.ASCII.GetBytes(regionName ?? "");

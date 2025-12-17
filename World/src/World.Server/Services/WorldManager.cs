@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -59,30 +60,62 @@ public class WorldManager
 
     public void BroadcastPlayersSnapshot()
     {
-        var entries = _sessions.Values.Select(s => (s.ClientId, s.X, s.Y)).Where(t => t.ClientId != 0).ToList();
+        var entries = _sessions.Values
+            .Where(s => s.ClientId != 0)
+            .Select(s => new { s.ClientId, s.X, s.Y, Username = s.Username ?? "" })
+            .ToList();
         
         foreach (var session in _sessions.Values)
         {
             var stream = session.Client.GetStream();
             if (stream == null || !stream.CanWrite) continue;
             
-            var list = entries;
-            var count = list.Count;
-            var payloadLen = 8 + count * 12;
-            var buf = new byte[3 + payloadLen];
-            buf[0] = 1;
-            buf[1] = (byte)PacketType.PlayersSnapshot;
-            buf[2] = (byte)payloadLen;
-            PacketUtils.WriteInt(buf, 3, session.ClientId);
-            PacketUtils.WriteInt(buf, 7, count);
-            var off = 11;
-            for (int i = 0; i < count; i++)
+            // Calculate payload length
+            // Header: MyId (4) + Count (4) = 8 bytes
+            var payloadLen = 8;
+            foreach (var e in entries)
             {
-                PacketUtils.WriteInt(buf, off, list[i].ClientId);
-                PacketUtils.WriteInt(buf, off + 4, list[i].X);
-                PacketUtils.WriteInt(buf, off + 8, list[i].Y);
-                off += 12;
+                // Each entry: Id (4) + X (4) + Y (4) + UserLen (4) + UserBytes (N)
+                payloadLen += 12 + 4 + Encoding.UTF8.GetByteCount(e.Username);
             }
+
+            byte[] buf;
+            int headerOffset;
+            
+            if (payloadLen < 255)
+            {
+                buf = new byte[3 + payloadLen];
+                buf[0] = 1;
+                buf[1] = (byte)PacketType.PlayersSnapshot;
+                buf[2] = (byte)payloadLen;
+                headerOffset = 3;
+            }
+            else
+            {
+                buf = new byte[3 + 2 + payloadLen];
+                buf[0] = 1;
+                buf[1] = (byte)PacketType.PlayersSnapshot;
+                buf[2] = 255;
+                buf[3] = (byte)((payloadLen >> 8) & 0xFF);
+                buf[4] = (byte)(payloadLen & 0xFF);
+                headerOffset = 5;
+            }
+
+            PacketUtils.WriteInt(buf, headerOffset, session.ClientId);
+            PacketUtils.WriteInt(buf, headerOffset + 4, entries.Count);
+            var off = headerOffset + 8;
+            
+            foreach (var e in entries)
+            {
+                PacketUtils.WriteInt(buf, off, e.ClientId);
+                PacketUtils.WriteInt(buf, off + 4, e.X);
+                PacketUtils.WriteInt(buf, off + 8, e.Y);
+                off += 12;
+                
+                PacketUtils.WriteString(buf, off, e.Username);
+                off += 4 + Encoding.UTF8.GetByteCount(e.Username);
+            }
+            
             try { stream.Write(buf, 0, buf.Length); } catch { }
         }
     }

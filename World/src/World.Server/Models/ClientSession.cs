@@ -7,6 +7,7 @@ public class ClientSession
 {
     public TcpClient Client { get; }
     public int ClientId { get; set; }
+    public string Username { get; set; } = "";
     public int GhostZoneWidth { get; set; } = 1;
     public HashSet<string> ActiveGhosts { get; set; } = new();
     public long LastMoveAtMs { get; set; }

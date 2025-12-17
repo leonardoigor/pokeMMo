@@ -30,7 +30,13 @@ public class ClientConfigHandler : IPacketHandler
         var gz = PacketUtils.ReadInt(payload, 0);
         var clamped = gz <= 0 ? 1 : (gz > 2 ? 2 : gz);
         session.GhostZoneWidth = clamped;
-        _logger.LogInformation("client_config ghost_zone_width={width}", clamped);
+
+        if (payload.Length > 4)
+        {
+            session.Username = PacketUtils.ReadString(payload, 4, out _);
+        }
+
+        _logger.LogInformation("client_config ghost_zone_width={width} username={username}", clamped, session.Username);
 
         var myId = _world.AssignClientId(session);
 
