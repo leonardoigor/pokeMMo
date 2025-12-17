@@ -1,0 +1,136 @@
+PROMPT – Implementar Multi-Ghost + Directory API (MMO 2D)
+
+CONTEXTO DO SISTEMA
+Estou desenvolvendo um MMO 2D distribuído em regiões (World Pods).
+
+Arquitetura atual:
+- Cliente Unity conecta via TCP diretamente a um World.
+- Existe 1 conexão primária (autoridade).
+- Existe Ghost Zone para pré-conexão com regiões vizinhas.
+- Existe Handoff para troca de região sem desconectar o jogador.
+- Os limites de cada região são definidos por minX/maxX/minY/maxY.
+- O servidor é autoridade total de movimento.
+- O cliente apenas envia MoveRequest e aplica PositionUpdate.
+
+Componentes:
+- Directory API (HTTP)
+  - Retorna dinamicamente todas as regiões vivas.
+  - Cada região contém:
+    regionName
+    host
+    tcpPort
+    minX
+    maxX
+    minY
+    maxY
+
+- World Server
+  - Valida movimento
+  - Detecta proximidade de fronteira
+  - Emite GhostZone / Handoff
+
+- Unity Client
+  - Gerencia conexões TCP
+  - Renderiza o mundo
+
+PROBLEMA ATUAL
+Hoje o sistema suporta apenas:
+- 1 conexão primária
+- 1 conexão ghost
+
+OBJETIVO
+Evoluir o sistema para suportar MULTI-GHOST CONNECTIONS.
+
+Requisitos:
+- Enquanto o player estiver em uma Ghost Zone, ele pode ter:
+  - 1 conexão primária (autoridade)
+  - 1, 2 ou N conexões ghost em standby
+- Todas as regiões candidatas devem ser descobertas dinamicamente via Directory API.
+- Nenhuma região vizinha deve ser hardcoded.
+- O cliente deve se conectar antecipadamente a TODAS as regiões possíveis de entrada.
+- Quando o player cruzar definitivamente para outra região:
+  - A conexão ghost correspondente vira primária
+  - A antiga região remove o player do estado
+  - As outras ghosts são fechadas
+
+COMPORTAMENTO ESPERADO (CLIENTE UNITY)
+- Manter estrutura:
+  - primaryConnection
+  - Dictionary<string, GhostConnection>
+- Cada GhostConnection:
+  - Possui TCP ativo
+  - Recebe PositionUpdate, mas NÃO aplica visualmente
+  - Apenas mantém estado sincronizado
+- A primária:
+  - É a única que aplica PositionUpdate no PlayerController
+- Ao receber Handoff:
+  - Promover ghost correspondente para primária
+  - Desconectar primária antiga
+  - Fechar ghosts inválidas
+  - Reenviar posição atual ao novo primário
+
+COMPORTAMENTO ESPERADO (WORLD SERVER)
+- O servidor NÃO assume vizinhos fixos
+- O servidor:
+  - Consulta Directory API
+  - Calcula dinamicamente quais regiões estão a até N tiles de distância da borda
+- Para cada região candidata:
+  - Envia GhostZoneEnter com host/port
+- Quando o player cruza o limite:
+  - Envia Handoff apenas para a região correta
+- Após Handoff:
+  - Remove o player da memória
+  - Fecha socket
+
+PROTOCOLO TCP
+Manter protocolo existente:
+- Header: [version, type, len]
+- Big-endian
+- Pacotes:
+  - MoveRequest
+  - PositionUpdate
+  - ClientConfig
+  - GhostZoneEnter
+  - GhostZoneLeave
+  - Handoff
+
+EXTENSÃO DO PROTOCOLO
+- GhostZoneEnter pode ser enviado múltiplas vezes
+- Cada GhostZoneEnter deve conter:
+  - regionName
+  - host
+  - port
+- GhostZoneLeave remove apenas a ghost específica
+
+REGRAS IMPORTANTES
+- O cliente nunca envia movimento para ghosts
+- O servidor nunca aceita movimento de ghosts
+- Apenas 1 região é autorativa por jogador
+- Todas as decisões finais são do servidor
+
+CRITÉRIOS DE ACEITAÇÃO
+- Player pode ficar em cruzamentos com 3 ou 4 regiões carregadas
+- Não há freeze nem loading screen
+- A troca de região é instantânea
+- Directory API é a única fonte de verdade de regiões vivas
+- O sistema suporta centenas de jogadores simultâneos
+
+ENTREGA ESPERADA DA IA
+- Código C# (Unity) para:
+  - Gerenciar múltiplas conexões ghost
+  - Promoção de ghost para primária
+- Código C# (.NET) para:
+  - Consulta à Directory API
+  - Cálculo dinâmico de regiões vizinhas
+- Diagramas textuais de fluxo
+- Justificativa técnica das decisões
+
+IMPORTANTE
+- NÃO simplificar
+- NÃO usar Unity headless server
+- NÃO usar Mirror / Netcode for GameObjects
+- NÃO usar WebSocket
+- TCP puro + protocolo binário
+
+Este prompt descreve um sistema MMO distribuído real.
+Implemente como um engenheiro de backend e networking sênior.

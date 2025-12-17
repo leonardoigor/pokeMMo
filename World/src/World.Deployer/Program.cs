@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Linq;
+using System.Threading.Tasks;
 
 string Arg(string name, string def = "")
 {
@@ -64,8 +65,30 @@ string ResolveNeighbor(string n)
 
 string RepoRoot()
 {
-    var cwd = Directory.GetCurrentDirectory();
-    return cwd;
+    static bool HasDockerfile(string dir)
+    {
+        try
+        {
+            var dockerfile = Path.Combine(dir, "World", "Dockerfile");
+            return File.Exists(dockerfile);
+        }
+        catch { return false; }
+    }
+    var candidates = new List<string>();
+    try { candidates.Add(Directory.GetCurrentDirectory()); } catch { }
+    try { candidates.Add(AppContext.BaseDirectory); } catch { }
+    foreach (var start in candidates.Where(c => !string.IsNullOrWhiteSpace(c)))
+    {
+        var cur = start;
+        for (int i = 0; i < 8; i++)
+        {
+            if (HasDockerfile(cur)) return cur;
+            var parent = Path.GetDirectoryName(cur);
+            if (string.IsNullOrWhiteSpace(parent) || parent == cur) break;
+            cur = parent;
+        }
+    }
+    return Directory.GetCurrentDirectory();
 }
 
 int Run(string fileName, string args, string? cwd = null)
@@ -232,20 +255,30 @@ if (!string.IsNullOrWhiteSpace(configPath))
         if (exit != 0) Environment.Exit(exit);
     }
     var regions = root.GetProperty("regions").EnumerateArray().ToList();
+    var tasks = new List<Task<(string name, int exit)>>();
     foreach (var r in regions)
     {
-        var name = r.GetProperty("name").GetString() ?? "";
-        var minX = r.GetProperty("minX").GetInt32();
-        var maxX = r.GetProperty("maxX").GetInt32();
-        var minY = r.GetProperty("minY").GetInt32();
-        var maxY = r.GetProperty("maxY").GetInt32();
-        var neighborsEl = r.TryGetProperty("neighbors", out var nEl) ? nEl : default;
-        var east = neighborsEl.ValueKind == JsonValueKind.Object && neighborsEl.TryGetProperty("east", out var e) ? (e.ValueKind == JsonValueKind.String ? e.GetString() : null) : null;
-        var west = neighborsEl.ValueKind == JsonValueKind.Object && neighborsEl.TryGetProperty("west", out var w) ? (w.ValueKind == JsonValueKind.String ? w.GetString() : null) : null;
-        var north = neighborsEl.ValueKind == JsonValueKind.Object && neighborsEl.TryGetProperty("north", out var n) ? (n.ValueKind == JsonValueKind.String ? n.GetString() : null) : null;
-        var south = neighborsEl.ValueKind == JsonValueKind.Object && neighborsEl.TryGetProperty("south", out var s) ? (s.ValueKind == JsonValueKind.String ? s.GetString() : null) : null;
-        var exit = Deploy(ns, image, name, minX, maxX, minY, maxY, east ?? "", west ?? "", north ?? "", south ?? "", 0, 0);
-        if (exit != 0) Environment.Exit(exit);
+        tasks.Add(Task.Run(() =>
+        {
+            var name = r.GetProperty("name").GetString() ?? "";
+            var minX = r.GetProperty("minX").GetInt32();
+            var maxX = r.GetProperty("maxX").GetInt32();
+            var minY = r.GetProperty("minY").GetInt32();
+            var maxY = r.GetProperty("maxY").GetInt32();
+            var neighborsEl = r.TryGetProperty("neighbors", out var nEl) ? nEl : default;
+            var east = neighborsEl.ValueKind == JsonValueKind.Object && neighborsEl.TryGetProperty("east", out var e) ? (e.ValueKind == JsonValueKind.String ? e.GetString() : null) : null;
+            var west = neighborsEl.ValueKind == JsonValueKind.Object && neighborsEl.TryGetProperty("west", out var w) ? (w.ValueKind == JsonValueKind.String ? w.GetString() : null) : null;
+            var north = neighborsEl.ValueKind == JsonValueKind.Object && neighborsEl.TryGetProperty("north", out var n) ? (n.ValueKind == JsonValueKind.String ? n.GetString() : null) : null;
+            var south = neighborsEl.ValueKind == JsonValueKind.Object && neighborsEl.TryGetProperty("south", out var s) ? (s.ValueKind == JsonValueKind.String ? s.GetString() : null) : null;
+            var exit = Deploy(ns, image, name, minX, maxX, minY, maxY, east ?? "", west ?? "", north ?? "", south ?? "", 0, 0);
+            return (name, exit);
+        }));
+    }
+    var results = await Task.WhenAll(tasks);
+    var failed = results.Where(r => r.exit != 0).ToList();
+    if (failed.Count > 0)
+    {
+        Environment.Exit(failed[0].exit);
     }
     Log("OK");
     Environment.Exit(0);
