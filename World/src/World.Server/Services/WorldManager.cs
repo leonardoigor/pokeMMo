@@ -105,7 +105,7 @@ public class WorldManager
     {
         var entries = _sessions.Values
             .Where(s => s.ClientId != 0)
-            .Select(s => new { s.ClientId, s.X, s.Y, Username = s.Username ?? "" })
+            .Select(s => new { s.ClientId, s.X, s.Y, s.IsMoving, Username = s.Username ?? "" })
             .ToList();
         
         foreach (var session in _sessions.Values)
@@ -118,8 +118,8 @@ public class WorldManager
             var payloadLen = 8;
             foreach (var e in entries)
             {
-                // Each entry: Id (4) + X (4) + Y (4) + UserLen (4) + UserBytes (N)
-                payloadLen += 12 + 4 + Encoding.UTF8.GetByteCount(e.Username);
+                // Each entry: Id (4) + X (4) + Y (4) + IsMoving (1) + UserLen (4) + UserBytes (N)
+                payloadLen += 12 + 1 + 4 + Encoding.UTF8.GetByteCount(e.Username);
             }
 
             byte[] buf;
@@ -153,7 +153,8 @@ public class WorldManager
                 PacketUtils.WriteInt(buf, off, e.ClientId);
                 PacketUtils.WriteInt(buf, off + 4, e.X);
                 PacketUtils.WriteInt(buf, off + 8, e.Y);
-                off += 12;
+                buf[off + 12] = e.IsMoving ? (byte)1 : (byte)0;
+                off += 13;
                 
                 PacketUtils.WriteString(buf, off, e.Username);
                 off += 4 + Encoding.UTF8.GetByteCount(e.Username);

@@ -12,5 +12,6 @@ public enum PacketType : byte
     DeadZones = 7,
     PlayersSnapshot = 8,
     PlayerInfo = 9,
-    ProvisionalConnection = 10
+    ProvisionalConnection = 10,
+    MoveState = 11
 }

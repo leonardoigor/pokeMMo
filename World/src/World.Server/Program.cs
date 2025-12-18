@@ -28,6 +28,7 @@ builder.Services.AddSingleton<WorldManager>();
 builder.Services.AddSingleton<PacketRouter>();
 builder.Services.AddSingleton<IPacketHandler, ClientConfigHandler>();
 builder.Services.AddSingleton<IPacketHandler, MoveRequestHandler>();
+builder.Services.AddSingleton<IPacketHandler, MoveStateHandler>();
 builder.Services.AddSingleton<IPacketHandler, ProvisionalConnectionHandler>();
 
 // Core

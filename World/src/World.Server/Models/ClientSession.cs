@@ -18,6 +18,7 @@ public class ClientSession
     public int? SafeX { get; set; }
     public int? SafeY { get; set; }
     public long LastArrivalAtMs { get; set; }
+    public bool IsMoving { get; set; }
 
     public ClientSession(TcpClient client)
     {
